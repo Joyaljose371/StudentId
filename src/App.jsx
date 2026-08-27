@@ -48,6 +48,11 @@ function extractTagCode(event) {
       if (record.recordType === "url") {
         const decoder = new TextDecoder(record.encoding || "utf-8");
         const url = decoder.decode(record.data);
+        try {
+          const parsed = new URL(url, window.location.origin);
+          const deepLinkCode = parsed.searchParams.get("nfc");
+          if (deepLinkCode) return deepLinkCode;
+        } catch { /* fall back to legacy path-based tag URLs */ }
         const parts = url.split("/").filter(Boolean);
         return parts[parts.length - 1];
       }
@@ -299,6 +304,18 @@ function ScanOverlay({ tag, waiting, onCancel }) {
           <div className="scan-tagname aos-serif">{tag.tag_name}</div>
         </>
       )}
+    </div>
+  );
+}
+
+function IDCardRecognisedOverlay({ tag, profile }) {
+  return (
+    <div className="scan-overlay">
+      <div style={{ width: "calc(100% - 48px)", maxWidth: 360, marginBottom: 26 }}>
+        <VirtualIDCard onScan={undefined} isScanning={false} profile={profile} />
+      </div>
+      <div className="scan-label" style={{ color: "var(--brass-soft)" }}>Card recognised</div>
+      <div className="scan-tagname aos-serif">{tag.tag_name}</div>
     </div>
   );
 }
@@ -666,6 +683,7 @@ function NfcManageScreen({ state, actions }) {
   const [contextType, setContextType] = useState("subject");
   const [contextId, setContextId] = useState(state.subjects[0]?.id || "");
   const [pairedCode, setPairedCode] = useState(null);
+  const [pairedSerial, setPairedSerial] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editContextType, setEditContextType] = useState("subject");
@@ -824,10 +842,10 @@ function NfcManageScreen({ state, actions }) {
         )}
         {state.nfcSupported ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <button className="aos-btn aos-btn-ghost" style={{ fontSize: 12 }} disabled={state.nfcListening} onClick={() => actions.startNfcScan((code, serial) => setPairedCode(code || serial))}>
+            <button className="aos-btn aos-btn-ghost" style={{ fontSize: 12 }} disabled={state.nfcListening} onClick={() => actions.startNfcScan((code, serial) => { setPairedCode(code || null); setPairedSerial(serial || null); })}>
               <Radio size={13} />{state.nfcListening ? "Waiting for tap…" : "Pair by tapping a sticker"}
             </button>
-            {pairedCode && <span className="aos-mono" style={{ fontSize: 11, color: "var(--moss)" }}>read: {pairedCode}</span>}
+            {(pairedCode || pairedSerial) && <span className="aos-mono" style={{ fontSize: 11, color: "var(--moss)" }}>read: {pairedCode || pairedSerial}</span>}
           </div>
         ) : (
           <div style={{ fontSize: 11.5, color: "#8B92A0", marginBottom: 10 }}>Physical NFC pairing requires Chrome on Android over HTTPS.</div>
@@ -835,8 +853,8 @@ function NfcManageScreen({ state, actions }) {
         <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => {
           if (name.trim()) {
             const needsId = ["subject", "research_project"].includes(contextType);
-            actions.addNfcTag(name, contextType, needsId ? contextId : null, pairedCode);
-            setName(""); setPairedCode(null);
+            actions.addNfcTag(name, contextType, needsId ? contextId : null, pairedCode, pairedSerial);
+            setName(""); setPairedCode(null); setPairedSerial(null);
           }
         }}>Register tag</button>
       </div>
@@ -1111,6 +1129,7 @@ export default function AcademicOS() {
   const [nfcListening, setNfcListening] = useState(false);
   const [nfcError, setNfcError] = useState(null);
   const [authSplash, setAuthSplash] = useState(null); // { contextLabel }
+  const [idCardOverlay, setIdCardOverlay] = useState(null);
   const nfcReaderRef = useRef(null);
   const nfcTagsRef = useRef(nfcTags);
 
@@ -1163,17 +1182,13 @@ export default function AcademicOS() {
 
   function handleScannedCode(code, serial) {
     const tags = nfcTagsRef.current;
-    // Match by tag_code (content on tag), or serial number (UID of physical tag)
+    // Strict matching: NDEF/deep-link code matches tag_code; hardware UID matches serial.
     const tag = tags.find((t) =>
       (code && t.tag_code && t.tag_code === code) ||
-      (serial && t.serial && t.serial === serial) ||
-      (serial && t.tag_code && t.tag_code === serial)
+      (serial && t.serial && t.serial === serial)
     );
     if (tag) tapTag(tag);
-    else {
-      // Tag was scanned but not registered — still show success, just go home
-      showToast("Tag read — not yet registered. Add it in Profile.");
-    }
+    else showToast("Tag read — not yet registered. Add it in Profile.");
   }
 
   async function startNfcScan(onCode) {
@@ -1203,8 +1218,14 @@ export default function AcademicOS() {
     }
   }
 
-  // Called by real NFC reads — shows animation then routes
+  // Called by real NFC reads — dashboard tags show the recognised ID card before routing.
   function tapTag(tag) {
+    if (tag.context_type === "dashboard") {
+      setScanning(null);
+      setIdCardOverlay(tag);
+      setTimeout(() => { setIdCardOverlay(null); routeForTag(tag); }, 1350);
+      return;
+    }
     setScanning(tag);
     setTimeout(() => { setScanning(null); routeForTag(tag); }, 1050);
   }
@@ -1229,17 +1250,11 @@ export default function AcademicOS() {
         const tags = nfcTagsRef.current;
         const scannedTag = tags.find((t) =>
           (code && t.tag_code && t.tag_code === code) ||
-          (serial && t.serial && t.serial === serial) ||
-          (serial && t.tag_code && t.tag_code === serial)
+          (serial && t.serial && t.serial === serial)
         );
-        if (scannedTag) {
-          setScanning(scannedTag);
-          setTimeout(() => { setScanning(null); routeForTag(scannedTag); }, 1050);
-        } else {
-          // Even if not matched, route the tag we were previewing (matching by intent)
-          setScanning(null);
-          routeForTag(tag);
-        }
+        setScanning(null);
+        if (scannedTag) tapTag(scannedTag);
+        else showToast("Tag read — not yet registered. Add it in Profile.");
       };
       reader.onreadingerror = () => {
         setNfcListening(false);
@@ -1281,16 +1296,16 @@ export default function AcademicOS() {
       setNfcTags((tags) => tags.map((t) => t.id === id ? { ...t, ...patch } : t));
       showToast("Tag updated");
     },
-    addNfcTag: (name, contextType, contextId, pairedCode) => {
+    addNfcTag: (name, contextType, contextId, pairedCode, pairedSerial) => {
       setNfcTags((tags) => [...tags, {
         id: uid(),
         tag_code: pairedCode || uid().toUpperCase().slice(0, 5),
         tag_name: name,
         context_type: contextType,
         context_id: contextId,
-        serial: pairedCode || null,
+        serial: pairedSerial || null,
       }]);
-      showToast(pairedCode ? "Physical tag paired" : "Tag registered");
+      showToast((pairedCode || pairedSerial) ? "Physical tag paired" : "Tag registered");
     },
     updateProfile: (p) => { setProfile(p); showToast("Profile saved"); },
     openQuickCapture: (ctx) => { setQuickCaptureContext(ctx); setQuickCaptureOpen(true); },
@@ -1315,7 +1330,8 @@ export default function AcademicOS() {
     <div className="aos-root">
       <style>{CSS}</style>
       {authSplash && <AuthSplash profile={profile} contextLabel={authSplash.contextLabel} onDone={() => setAuthSplash(null)} />}
-      {scanning && !authSplash && (
+      {idCardOverlay && !authSplash && <IDCardRecognisedOverlay tag={idCardOverlay} profile={profile} />}
+      {scanning && !authSplash && !idCardOverlay && (
         <ScanOverlay
           tag={scanning}
           waiting={nfcListening}
