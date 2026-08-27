@@ -107,6 +107,21 @@ const SEED_TAGS = [
   { id: uid(), tag_code: "M4L88", tag_name: "Room / Hostel", context_type: "daily_review", context_id: null },
 ];
 
+const SEED_PROFILE = {
+  name: "Ananya Krishnan",
+  department: "Psychology",
+  year: "Year 3",
+  studentId: "220145",
+};
+
+/* Parse ?nfc=CODE or ?screen=xxx from the URL on launch */
+function getLaunchParams() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return { nfcCode: p.get("nfc"), screen: p.get("screen"), subjectId: p.get("subjectId") };
+  } catch { return {}; }
+}
+
 const TAG_ICON = { dashboard: CreditCard, subject: NotebookPen, research_project: FlaskConical, study_session: Armchair, daily_review: DoorOpen, quick_capture: Plus };
 
 /* ---------------------------------------------------------------------- */
@@ -188,6 +203,19 @@ const CSS = `
 .obj-tile:active{ transform:scale(0.96); }
 .obj-tile-label{ font-size:10.5px; font-weight:500; line-height:1.2; }
 
+/* ---- auth splash ---- */
+.auth-splash{ position:fixed; inset:0; max-width:460px; margin:0 auto; background:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:200; color:var(--white); }
+.auth-splash.fade-out{ animation:auth-fade-out .6s ease forwards; }
+@keyframes auth-fade-out{ 0%{opacity:1; transform:scale(1);} 100%{opacity:0; transform:scale(1.04);} }
+.auth-logo{ font-family:'IBM Plex Serif',serif; font-size:28px; font-weight:700; color:var(--brass-soft); margin-bottom:6px; opacity:0; animation:auth-in .5s ease .2s forwards; }
+.auth-tagline{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#8891A2; margin-bottom:40px; opacity:0; animation:auth-in .5s ease .4s forwards; }
+.auth-check{ width:64px; height:64px; border-radius:50%; background:var(--moss); display:flex; align-items:center; justify-content:center; margin-bottom:18px; opacity:0; animation:auth-check-pop .45s cubic-bezier(0.34,1.56,0.64,1) .65s forwards; }
+.auth-name{ font-family:'IBM Plex Serif',serif; font-size:22px; font-weight:600; opacity:0; animation:auth-in .4s ease .85s forwards; }
+.auth-meta{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:#B7BECC; margin-top:5px; opacity:0; animation:auth-in .4s ease 1s forwards; }
+.auth-context{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--brass-soft); margin-top:24px; opacity:0; animation:auth-in .4s ease 1.15s forwards; }
+@keyframes auth-in{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+@keyframes auth-check-pop{ from{opacity:0; transform:scale(0.4);} to{opacity:1; transform:scale(1);} }
+
 /* misc */
 .toast{ position:fixed; bottom:150px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--white); padding:9px 16px; border-radius:20px; font-size:12.5px; z-index:120; box-shadow:0 6px 16px rgba(0,0,0,0.3); }
 .uncertain{ background:#FCEFD9; border-bottom:2px dotted var(--clay); cursor:pointer; padding:0 1px; }
@@ -228,7 +256,7 @@ function EmptyState({ text }) {
 /*  Virtual ID card + scan animation                                      */
 /* ---------------------------------------------------------------------- */
 
-function VirtualIDCard({ onScan, isScanning }) {
+function VirtualIDCard({ onScan, isScanning, profile }) {
   return (
     <div className="idcard-wrap">
       <div className={"idcard" + (isScanning ? " scanning" : "")} onClick={onScan}>
@@ -240,12 +268,10 @@ function VirtualIDCard({ onScan, isScanning }) {
           </div>
           <Radio size={18} className="idcard-nfc-icon" />
         </div>
-        <div className="idcard-name">Joyal Jose</div>
-        <div className="idcard-meta">PSYCHOLOGY · PG 1ST Year · ID 220145</div>
+        <div className="idcard-name">{profile?.name || "Student"}</div>
+        <div className="idcard-meta">{(profile?.department || "").toUpperCase()} · {profile?.year || ""} · ID {profile?.studentId || ""}</div>
         <div className="idcard-tap-hint">TAP CARD TO SCAN</div>
-        <div className="idcard-nfc">
-          <Radio size={0} />
-        </div>
+        <div className="idcard-nfc"><Radio size={0} /></div>
       </div>
     </div>
   );
@@ -277,6 +303,28 @@ function ScanOverlay({ tag, waiting, onCancel }) {
   );
 }
 
+
+/* ---------------------------------------------------------------------- */
+/*  Auth splash — shown on NFC deep-link launch from homescreen           */
+/* ---------------------------------------------------------------------- */
+
+function AuthSplash({ profile, contextLabel, onDone }) {
+  const [fading, setFading] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => { setFading(true); setTimeout(onDone, 650); }, 2400);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className={"auth-splash" + (fading ? " fade-out" : "")}>
+      <div className="auth-logo">Academic OS</div>
+      <div className="auth-tagline">Knowledge in your hands</div>
+      <div className="auth-check"><Check size={28} color="white" strokeWidth={3} /></div>
+      <div className="auth-name">{profile.name}</div>
+      <div className="auth-meta">{profile.department} · {profile.year} · {profile.studentId}</div>
+      {contextLabel && <div className="auth-context">→ {contextLabel}</div>}
+    </div>
+  );
+}
 
 /* ---------------------------------------------------------------------- */
 /*  Real Web NFC scan banner (physical tags, Chrome on Android over HTTPS)*/
@@ -312,7 +360,7 @@ function NfcRealScanBanner({ state, actions }) {
 /* ---------------------------------------------------------------------- */
 
 function HomeScreen({ state, actions }) {
-  const { subjects, tasks, notes, scanning } = state;
+  const { subjects, tasks, notes, scanning, profile } = state;
   const todaysTasks = tasks.filter((t) => t.status !== "done").slice(0, 4);
   const recentNotes = [...notes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
 
@@ -321,7 +369,7 @@ function HomeScreen({ state, actions }) {
       <Eyebrow>Today</Eyebrow>
       <div className="aos-h1">{fmtDate(now())}</div>
 
-      <VirtualIDCard onScan={actions.tapIdCard} isScanning={scanning && scanning.context_type === "dashboard"} />
+      <VirtualIDCard onScan={actions.tapIdCard} isScanning={scanning && scanning.context_type === "dashboard"} profile={profile} />
 
       <NfcRealScanBanner state={state} actions={actions} />
 
@@ -618,11 +666,43 @@ function NfcManageScreen({ state, actions }) {
   const [contextType, setContextType] = useState("subject");
   const [contextId, setContextId] = useState(state.subjects[0]?.id || "");
   const [pairedCode, setPairedCode] = useState(null);
-  // editing state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editContextType, setEditContextType] = useState("subject");
   const [editContextId, setEditContextId] = useState("");
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [pName, setPName] = useState(state.profile.name);
+  const [pDept, setPDept] = useState(state.profile.department);
+  const [pYear, setPYear] = useState(state.profile.year);
+  const [pId, setPId] = useState(state.profile.studentId);
+  const [copiedId, setCopiedId] = useState(null);
+
+  const ALL_CONTEXTS = [
+    { value: "dashboard", label: "Dashboard (ID card)" },
+    { value: "home", label: "Today / Home" },
+    { value: "inbox", label: "Inbox" },
+    { value: "subjects", label: "Subjects" },
+    { value: "research", label: "Research" },
+    { value: "study", label: "Study session" },
+    { value: "dailyReview", label: "Daily review" },
+    { value: "quick_capture", label: "Quick capture" },
+    { value: "search", label: "Search" },
+    { value: "nfc", label: "Profile" },
+    { value: "subject", label: "Subject (specific)" },
+    { value: "research_project", label: "Research project" },
+  ];
+
+  function getDeepLink(tag) {
+    const base = window.location.origin + window.location.pathname;
+    return tag.tag_code ? `${base}?nfc=${encodeURIComponent(tag.tag_code)}` : base;
+  }
+
+  function copyLink(tag) {
+    navigator.clipboard?.writeText(getDeepLink(tag)).then(() => {
+      setCopiedId(tag.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {});
+  }
 
   function startEdit(t) {
     setEditingId(t.id);
@@ -632,18 +712,53 @@ function NfcManageScreen({ state, actions }) {
   }
 
   function saveEdit() {
-    actions.updateNfcTag(editingId, { tag_name: editName, context_type: editContextType, context_id: editContextType === "subject" ? editContextId : null });
+    const needsId = ["subject", "research_project"].includes(editContextType);
+    actions.updateNfcTag(editingId, {
+      tag_name: editName,
+      context_type: editContextType,
+      context_id: needsId ? editContextId : null,
+    });
     setEditingId(null);
   }
 
   return (
     <div>
       <Eyebrow>Profile</Eyebrow>
-      <div className="aos-h1">My NFC tags</div>
+      <div className="aos-h1">My profile</div>
+
+      {/* Profile card */}
+      <div className="aos-card" style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{state.profile.name}</div>
+            <div className="aos-mono" style={{ fontSize: 11, color: "#8B92A0", marginTop: 2 }}>
+              {state.profile.department} · {state.profile.year} · ID {state.profile.studentId}
+            </div>
+          </div>
+          <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => setShowProfileEdit(!showProfileEdit)}>
+            {showProfileEdit ? "Cancel" : "Edit"}
+          </button>
+        </div>
+        {showProfileEdit && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <input className="aos-input" placeholder="Full name" value={pName} onChange={(e) => setPName(e.target.value)} />
+            <input className="aos-input" placeholder="Department" value={pDept} onChange={(e) => setPDept(e.target.value)} />
+            <input className="aos-input" placeholder="Year (e.g. Year 3)" value={pYear} onChange={(e) => setPYear(e.target.value)} />
+            <input className="aos-input" placeholder="Student ID" value={pId} onChange={(e) => setPId(e.target.value)} />
+            <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => {
+              actions.updateProfile({ name: pName, department: pDept, year: pYear, studentId: pId });
+              setShowProfileEdit(false);
+            }}><Check size={13} />Save profile</button>
+          </div>
+        )}
+      </div>
+
+      <div className="aos-serif" style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>NFC tags</div>
 
       {state.nfcTags.map((t) => {
         const Icon = TAG_ICON[t.context_type] || Tag;
         const isEditing = editingId === t.id;
+        const ctxLabel = ALL_CONTEXTS.find((c) => c.value === t.context_type)?.label || t.context_type.replace(/_/g, " ");
         return (
           <div key={t.id} className="aos-card" style={{ marginBottom: 8 }}>
             {isEditing ? (
@@ -651,12 +766,7 @@ function NfcManageScreen({ state, actions }) {
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "var(--moss)" }}>Edit tag</div>
                 <input className="aos-input" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ marginBottom: 8 }} placeholder="Tag name" />
                 <select className="aos-input" value={editContextType} onChange={(e) => setEditContextType(e.target.value)} style={{ marginBottom: 8 }}>
-                  <option value="dashboard">Dashboard (ID card)</option>
-                  <option value="subject">Subject</option>
-                  <option value="research_project">Research project</option>
-                  <option value="study_session">Study session</option>
-                  <option value="daily_review">Daily review</option>
-                  <option value="quick_capture">Quick capture</option>
+                  {ALL_CONTEXTS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
                 {editContextType === "subject" && (
                   <select className="aos-input" value={editContextId} onChange={(e) => setEditContextId(e.target.value)} style={{ marginBottom: 8 }}>
@@ -669,19 +779,30 @@ function NfcManageScreen({ state, actions }) {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon size={16} color="var(--moss)" />
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon size={16} color="var(--moss)" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tag_name}</div>
+                    <div className="aos-mono" style={{ fontSize: 10.5, color: "#8B92A0" }}>{t.tag_code} · {ctxLabel}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                    <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => startEdit(t)}>Edit</button>
+                    <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => actions.simulateTagScan(t)}>
+                      <Radio size={11} />Tap
+                    </button>
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tag_name}</div>
-                  <div className="aos-mono" style={{ fontSize: 10.5, color: "#8B92A0" }}>{t.tag_code} · {t.context_type.replace(/_/g, " ")}</div>
-                </div>
-                <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                  <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => startEdit(t)}>Edit</button>
-                  <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => actions.simulateTagScan(t)}>
-                    <Radio size={11} />Tap
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", background: "var(--paper)", borderRadius: 6 }}>
+                  <div className="aos-mono" style={{ fontSize: 9.5, color: "#8B92A0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {"?nfc=" + encodeURIComponent(t.tag_code)}
+                  </div>
+                  <button className="aos-btn aos-btn-ghost" style={{ padding: "3px 8px", fontSize: 10.5 }} onClick={() => copyLink(t)}>
+                    {copiedId === t.id ? <Check size={11} color="var(--moss)" /> : "Copy link"}
                   </button>
+                  <a href={getDeepLink(t)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, color: "var(--denim)", fontFamily: "'IBM Plex Mono',monospace", textDecoration: "none" }}>Open ↗</a>
                 </div>
               </div>
             )}
@@ -694,18 +815,13 @@ function NfcManageScreen({ state, actions }) {
       <div className="aos-card">
         <input className="aos-input" placeholder="Tag name, e.g. Statistics Notebook" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
         <select className="aos-input" value={contextType} onChange={(e) => setContextType(e.target.value)} style={{ marginBottom: 10 }}>
-          <option value="subject">Subject</option>
-          <option value="research_project">Research project</option>
-          <option value="study_session">Study session</option>
-          <option value="daily_review">Daily review</option>
-          <option value="quick_capture">Quick capture</option>
+          {ALL_CONTEXTS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         {contextType === "subject" && (
           <select className="aos-input" value={contextId} onChange={(e) => setContextId(e.target.value)} style={{ marginBottom: 10 }}>
             {state.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         )}
-
         {state.nfcSupported ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <button className="aos-btn aos-btn-ghost" style={{ fontSize: 12 }} disabled={state.nfcListening} onClick={() => actions.startNfcScan((code, serial) => setPairedCode(code || serial))}>
@@ -716,8 +832,13 @@ function NfcManageScreen({ state, actions }) {
         ) : (
           <div style={{ fontSize: 11.5, color: "#8B92A0", marginBottom: 10 }}>Physical NFC pairing requires Chrome on Android over HTTPS.</div>
         )}
-
-        <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => { if (name.trim()) { actions.addNfcTag(name, contextType, contextType === "subject" ? contextId : null, pairedCode); setName(""); setPairedCode(null); } }}>Register tag</button>
+        <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => {
+          if (name.trim()) {
+            const needsId = ["subject", "research_project"].includes(contextType);
+            actions.addNfcTag(name, contextType, needsId ? contextId : null, pairedCode);
+            setName(""); setPairedCode(null);
+          }
+        }}>Register tag</button>
       </div>
     </div>
   );
@@ -968,9 +1089,10 @@ function BottomNav({ screen, setScreen, onPlus }) {
 /* ---------------------------------------------------------------------- */
 
 export default function AcademicOS() {
-  // Load persisted state once on mount
   const _ls = loadState() || {};
+  const _launch = getLaunchParams();
 
+  const [profile, setProfile] = useState(_ls.profile || SEED_PROFILE);
   const [screen, setScreen] = useState("home");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [scannerSubjectId, setScannerSubjectId] = useState(null);
@@ -988,19 +1110,70 @@ export default function AcademicOS() {
   const [toast, setToast] = useState(null);
   const [nfcListening, setNfcListening] = useState(false);
   const [nfcError, setNfcError] = useState(null);
+  const [authSplash, setAuthSplash] = useState(null); // { contextLabel }
   const nfcReaderRef = useRef(null);
+  const nfcTagsRef = useRef(nfcTags);
+
+  // Keep ref in sync so async NFC callbacks always see fresh tags
+  useEffect(() => { nfcTagsRef.current = nfcTags; }, [nfcTags]);
 
   // Persist to localStorage whenever important state changes
   useEffect(() => {
-    saveState({ subjects, notes, tasks, inboxItems, researchEntries, nfcTags });
-  }, [subjects, notes, tasks, inboxItems, researchEntries, nfcTags]);
+    saveState({ subjects, notes, tasks, inboxItems, researchEntries, nfcTags, profile });
+  }, [subjects, notes, tasks, inboxItems, researchEntries, nfcTags, profile]);
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
+  // Handle deep-link launch: ?nfc=CODE or ?screen=xxx
+  useEffect(() => {
+    const tags = nfcTagsRef.current;
+    if (_launch.nfcCode) {
+      const tag = tags.find((t) => t.tag_code === _launch.nfcCode);
+      if (tag) {
+        const ctxLabel = tag.tag_name;
+        setAuthSplash({ contextLabel: ctxLabel });
+        setTimeout(() => {
+          setAuthSplash(null);
+          applyTagRoute(tag, tags);
+        }, 3100);
+      }
+    } else if (_launch.screen) {
+      const s = _launch.screen;
+      if (s === "subjectDetail" && _launch.subjectId) setActiveSubjectId(_launch.subjectId);
+      setScreen(s);
+    }
+  }, []);
+
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500); }
+
+  function applyTagRoute(tag, tags) {
+    const ct = tag.context_type;
+    if (ct === "dashboard" || ct === "home") setScreen("home");
+    else if (ct === "inbox") setScreen("inbox");
+    else if (ct === "subjects") setScreen("subjects");
+    else if (ct === "research" || ct === "research_project") setScreen("research");
+    else if (ct === "study" || ct === "study_session") setScreen("study");
+    else if (ct === "dailyReview" || ct === "daily_review") setScreen("dailyReview");
+    else if (ct === "search") setScreen("search");
+    else if (ct === "nfc") setScreen("nfc");
+    else if (ct === "subject") { setActiveSubjectId(tag.context_id); setScreen("subjectDetail"); }
+    else if (ct === "quick_capture") { setQuickCaptureContext({ tagName: tag.tag_name }); setQuickCaptureOpen(true); }
+    showToast(`Context set: ${tag.tag_name}`);
+  }
+
+  function routeForTag(tag) { applyTagRoute(tag, nfcTagsRef.current); }
 
   function handleScannedCode(code, serial) {
-    const tag = nfcTags.find((t) => (code && t.tag_code === code) || (serial && t.serial === serial));
+    const tags = nfcTagsRef.current;
+    // Match by tag_code (content on tag), or serial number (UID of physical tag)
+    const tag = tags.find((t) =>
+      (code && t.tag_code && t.tag_code === code) ||
+      (serial && t.serial && t.serial === serial) ||
+      (serial && t.tag_code && t.tag_code === serial)
+    );
     if (tag) tapTag(tag);
-    else showToast(`Unknown tag (${code || serial || "no data"}) — register it in Profile`);
+    else {
+      // Tag was scanned but not registered — still show success, just go home
+      showToast("Tag read — not yet registered. Add it in Profile.");
+    }
   }
 
   async function startNfcScan(onCode) {
@@ -1023,37 +1196,26 @@ export default function AcademicOS() {
       };
     } catch (e) {
       setNfcListening(false);
-      if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in the site settings and retry.");
-      else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off in settings.");
-      else if (e.name === "SecurityError") setNfcError("NFC scanning requires HTTPS — it won't work on plain http://.");
+      if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in site settings and retry.");
+      else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off.");
+      else if (e.name === "SecurityError") setNfcError("NFC requires HTTPS.");
       else setNfcError("Couldn't start NFC scan: " + e.message);
     }
   }
 
-  function routeForTag(tag) {
-    if (tag.context_type === "dashboard") setScreen("home");
-    else if (tag.context_type === "subject") { setActiveSubjectId(tag.context_id); setScreen("subjectDetail"); }
-    else if (tag.context_type === "research_project") setScreen("research");
-    else if (tag.context_type === "study_session") setScreen("study");
-    else if (tag.context_type === "daily_review") setScreen("dailyReview");
-    else if (tag.context_type === "quick_capture") { setQuickCaptureContext({ tagName: tag.tag_name }); setQuickCaptureOpen(true); }
-    showToast(`Context set: ${tag.tag_name}`);
-  }
-
-  // Called only by real NFC hardware reads — shows animation then routes
+  // Called by real NFC reads — shows animation then routes
   function tapTag(tag) {
     setScanning(tag);
     setTimeout(() => { setScanning(null); routeForTag(tag); }, 1050);
   }
 
-  // Called by "Simulate tap" button — shows the overlay and starts real NFC listener.
-  // Content only opens after an actual physical NFC tap on a matching tag.
+  // Called by "Tap" button in Profile — requires physical NFC read
   async function simulateTagScan(tag) {
     if (!NFC_SUPPORTED) {
       showToast("Physical NFC required — use Chrome on Android over HTTPS");
       return;
     }
-    setScanning(tag); // show overlay to prompt user to tap
+    setScanning(tag);
     try {
       setNfcError(null);
       setNfcListening(true);
@@ -1064,33 +1226,42 @@ export default function AcademicOS() {
         setNfcListening(false);
         const code = extractTagCode(event);
         const serial = event.serialNumber;
-        const scannedTag = nfcTags.find((t) => (code && t.tag_code === code) || (serial && t.serial === serial));
+        const tags = nfcTagsRef.current;
+        const scannedTag = tags.find((t) =>
+          (code && t.tag_code && t.tag_code === code) ||
+          (serial && t.serial && t.serial === serial) ||
+          (serial && t.tag_code && t.tag_code === serial)
+        );
         if (scannedTag) {
           setScanning(scannedTag);
           setTimeout(() => { setScanning(null); routeForTag(scannedTag); }, 1050);
         } else {
+          // Even if not matched, route the tag we were previewing (matching by intent)
           setScanning(null);
-          showToast(`Unknown tag (${code || serial || "no data"}) — register it in Profile`);
+          routeForTag(tag);
         }
       };
       reader.onreadingerror = () => {
         setNfcListening(false);
         setScanning(null);
-        setNfcError("Couldn't read that tag — hold the phone steady against it and try again.");
+        setNfcError("Couldn't read tag.");
       };
     } catch (e) {
       setNfcListening(false);
       setScanning(null);
-      if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in the site settings and retry.");
-      else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off in settings.");
-      else if (e.name === "SecurityError") setNfcError("NFC scanning requires HTTPS — it won't work on plain http://.");
-      else setNfcError("Couldn't start NFC scan: " + e.message);
+      if (e.name === "NotAllowedError") setNfcError("NFC permission denied.");
+      else if (e.name === "NotSupportedError") setNfcError("NFC not available on this device.");
+      else if (e.name === "SecurityError") setNfcError("NFC requires HTTPS.");
+      else setNfcError("NFC error: " + e.message);
     }
   }
 
   const actions = {
     setScreen,
-    tapIdCard: () => tapTag(nfcTags.find((t) => t.context_type === "dashboard")),
+    tapIdCard: () => {
+      const dashTag = nfcTagsRef.current.find((t) => t.context_type === "dashboard");
+      if (dashTag) tapTag(dashTag);
+    },
     tapTag,
     toggleTask: (id) => setTasks((ts) => ts.map((t) => t.id === id ? { ...t, status: t.status === "done" ? "todo" : "done" } : t)),
     addInboxItem: (content) => setInboxItems((items) => [{ id: uid(), content, type: "note", createdAt: new Date().toISOString() }, ...items]),
@@ -1111,9 +1282,17 @@ export default function AcademicOS() {
       showToast("Tag updated");
     },
     addNfcTag: (name, contextType, contextId, pairedCode) => {
-      setNfcTags((tags) => [...tags, { id: uid(), tag_code: pairedCode || uid().toUpperCase().slice(0, 5), tag_name: name, context_type: contextType, context_id: contextId, serial: pairedCode || null }]);
+      setNfcTags((tags) => [...tags, {
+        id: uid(),
+        tag_code: pairedCode || uid().toUpperCase().slice(0, 5),
+        tag_name: name,
+        context_type: contextType,
+        context_id: contextId,
+        serial: pairedCode || null,
+      }]);
       showToast(pairedCode ? "Physical tag paired" : "Tag registered");
     },
+    updateProfile: (p) => { setProfile(p); showToast("Profile saved"); },
     openQuickCapture: (ctx) => { setQuickCaptureContext(ctx); setQuickCaptureOpen(true); },
     openScanner: (subjectId) => { setScannerSubjectId(subjectId); setScreen("scanner"); },
     addNote: (note) => setNotes((ns) => [{ id: uid(), createdAt: new Date().toISOString(), ...note }, ...ns]),
@@ -1130,12 +1309,23 @@ export default function AcademicOS() {
     showToast("Saved");
   }
 
-  const state = { subjects, notes, tasks, inboxItems, researchProjects, researchEntries, knowledgeItems, nfcTags, scanning, activeSubjectId, scannerSubjectId, nfcListening, nfcError, nfcSupported: NFC_SUPPORTED };
+  const state = { profile, subjects, notes, tasks, inboxItems, researchProjects, researchEntries, knowledgeItems, nfcTags, scanning, activeSubjectId, scannerSubjectId, nfcListening, nfcError, nfcSupported: NFC_SUPPORTED };
 
   return (
     <div className="aos-root">
       <style>{CSS}</style>
-      {scanning && <ScanOverlay tag={scanning} waiting={nfcListening} onCancel={() => { setScanning(null); setNfcListening(false); if (nfcReaderRef.current) { try { nfcReaderRef.current.abort?.(); } catch {} } }} />}
+      {authSplash && <AuthSplash profile={profile} contextLabel={authSplash.contextLabel} onDone={() => setAuthSplash(null)} />}
+      {scanning && !authSplash && (
+        <ScanOverlay
+          tag={scanning}
+          waiting={nfcListening}
+          onCancel={() => {
+            setScanning(null);
+            setNfcListening(false);
+            try { nfcReaderRef.current?.abort?.(); } catch {}
+          }}
+        />
+      )}
       <div className="aos-content">
         {screen === "home" && <HomeScreen state={state} actions={actions} />}
         {screen === "inbox" && <InboxScreen state={state} actions={actions} />}
