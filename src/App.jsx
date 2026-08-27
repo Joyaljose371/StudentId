@@ -146,11 +146,16 @@ const SEED_PROFILE = {
   photoDataUrl: "",
 };
 
-/* Parse ?nfc=CODE or ?screen=xxx from the URL on launch */
+/* Parse external launch parameters */
 function getLaunchParams() {
   try {
     const p = new URLSearchParams(window.location.search);
-    return { nfcCode: p.get("nfc"), screen: p.get("screen"), subjectId: p.get("subjectId") };
+    return {
+      nfcCode: p.get("nfc"),
+      screen: p.get("screen"),
+      subjectId: p.get("subjectId"),
+      idCard: p.get("idcard") === "1",
+    };
   } catch { return {}; }
 }
 
@@ -1534,9 +1539,18 @@ export default function AcademicOS() {
     };
   }, [reminders, activeReminder]);
 
-  // Handle deep-link launch: ?nfc=CODE or ?screen=xxx
+  // Handle external launch: direct ID-card preview, NFC deep link, or screen route
   useEffect(() => {
     const tags = nfcTagsRef.current;
+
+    if (_launch.idCard) {
+      const dashboardTag =
+        tags.find((t) => t.context_type === "dashboard") ||
+        { tag_name: "Student ID Card", context_type: "dashboard", context_id: null };
+      setIdCardOverlay(dashboardTag);
+      return;
+    }
+
     if (_launch.nfcCode) {
       const tag = tags.find((t) => t.tag_code === _launch.nfcCode);
       if (tag) {
