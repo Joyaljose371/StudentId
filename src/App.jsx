@@ -15,6 +15,30 @@ const now = () => new Date();
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtDate = (d) => d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
 
+/* ---------------------------------------------------------------------- */
+/*  localStorage persistence                                              */
+/* ---------------------------------------------------------------------- */
+
+const LS_KEY = "academic_os_v1";
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Re-hydrate Date-like fields
+    if (s.notes) s.notes = s.notes.map((n) => ({ ...n }));
+    return s;
+  } catch { return null; }
+}
+
+function saveState(patch) {
+  try {
+    const prev = loadState() || {};
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...prev, ...patch }));
+  } catch { /* quota exceeded – silent */ }
+}
+
 /* Web NFC: Chrome on Android only, over HTTPS, needs a user gesture to start */
 const NFC_SUPPORTED = typeof window !== "undefined" && "NDEFReader" in window;
 
@@ -227,18 +251,28 @@ function VirtualIDCard({ onScan, isScanning }) {
   );
 }
 
-function ScanOverlay({ tag }) {
+function ScanOverlay({ tag, waiting, onCancel }) {
   const Icon = TAG_ICON[tag.context_type] || Tag;
   return (
-    <div className="scan-overlay">
+    <div className="scan-overlay" onClick={waiting ? onCancel : undefined} style={{ cursor: waiting ? "pointer" : "default" }}>
       <div className="scan-rings">
         <div className="scan-ring r1" />
         <div className="scan-ring r2" />
         <div className="scan-ring r3" />
         <div className="scan-core"><Icon size={20} /></div>
       </div>
-      <div className="scan-label">Reading tag · {tag.tag_code}</div>
-      <div className="scan-tagname aos-serif">{tag.tag_name}</div>
+      {waiting ? (
+        <>
+          <div className="scan-label" style={{ color: "var(--brass-soft)" }}>Hold phone against the NFC tag</div>
+          <div className="scan-tagname aos-serif">{tag.tag_name}</div>
+          <div style={{ marginTop: 18, fontSize: 11.5, color: "#8B92A0", fontFamily: "'IBM Plex Mono',monospace" }}>Tap anywhere to cancel</div>
+        </>
+      ) : (
+        <>
+          <div className="scan-label">Reading tag · {tag.tag_code}</div>
+          <div className="scan-tagname aos-serif">{tag.tag_name}</div>
+        </>
+      )}
     </div>
   );
 }
@@ -584,23 +618,77 @@ function NfcManageScreen({ state, actions }) {
   const [contextType, setContextType] = useState("subject");
   const [contextId, setContextId] = useState(state.subjects[0]?.id || "");
   const [pairedCode, setPairedCode] = useState(null);
+  // editing state
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editContextType, setEditContextType] = useState("subject");
+  const [editContextId, setEditContextId] = useState("");
+
+  function startEdit(t) {
+    setEditingId(t.id);
+    setEditName(t.tag_name);
+    setEditContextType(t.context_type);
+    setEditContextId(t.context_id || state.subjects[0]?.id || "");
+  }
+
+  function saveEdit() {
+    actions.updateNfcTag(editingId, { tag_name: editName, context_type: editContextType, context_id: editContextType === "subject" ? editContextId : null });
+    setEditingId(null);
+  }
+
   return (
     <div>
       <Eyebrow>Profile</Eyebrow>
       <div className="aos-h1">My NFC tags</div>
+
       {state.nfcTags.map((t) => {
         const Icon = TAG_ICON[t.context_type] || Tag;
+        const isEditing = editingId === t.id;
         return (
-          <div key={t.id} className="aos-card" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={16} color="var(--moss)" /></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.tag_name}</div>
-              <div className="aos-mono" style={{ fontSize: 10.5, color: "#8B92A0" }}>{t.tag_code} · {t.context_type.replace("_", " ")}</div>
-            </div>
-            <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => actions.tapTag(t)}>Simulate tap</button>
+          <div key={t.id} className="aos-card" style={{ marginBottom: 8 }}>
+            {isEditing ? (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "var(--moss)" }}>Edit tag</div>
+                <input className="aos-input" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ marginBottom: 8 }} placeholder="Tag name" />
+                <select className="aos-input" value={editContextType} onChange={(e) => setEditContextType(e.target.value)} style={{ marginBottom: 8 }}>
+                  <option value="dashboard">Dashboard (ID card)</option>
+                  <option value="subject">Subject</option>
+                  <option value="research_project">Research project</option>
+                  <option value="study_session">Study session</option>
+                  <option value="daily_review">Daily review</option>
+                  <option value="quick_capture">Quick capture</option>
+                </select>
+                {editContextType === "subject" && (
+                  <select className="aos-input" value={editContextId} onChange={(e) => setEditContextId(e.target.value)} style={{ marginBottom: 8 }}>
+                    {state.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="aos-btn aos-btn-primary" style={{ flex: 1 }} onClick={saveEdit}><Check size={13} />Save</button>
+                  <button className="aos-btn aos-btn-ghost" style={{ flex: 1 }} onClick={() => setEditingId(null)}><X size={13} />Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={16} color="var(--moss)" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tag_name}</div>
+                  <div className="aos-mono" style={{ fontSize: 10.5, color: "#8B92A0" }}>{t.tag_code} · {t.context_type.replace(/_/g, " ")}</div>
+                </div>
+                <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                  <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => startEdit(t)}>Edit</button>
+                  <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => actions.simulateTagScan(t)}>
+                    <Radio size={11} />Tap
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
+
       <div className="aos-divider" />
       <div className="aos-serif" style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Register a new tag</div>
       <div className="aos-card">
@@ -618,13 +706,15 @@ function NfcManageScreen({ state, actions }) {
           </select>
         )}
 
-        {state.nfcSupported && (
+        {state.nfcSupported ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <button className="aos-btn aos-btn-ghost" style={{ fontSize: 12 }} disabled={state.nfcListening} onClick={() => actions.startNfcScan((code, serial) => setPairedCode(code || serial))}>
               <Radio size={13} />{state.nfcListening ? "Waiting for tap…" : "Pair by tapping a sticker"}
             </button>
             {pairedCode && <span className="aos-mono" style={{ fontSize: 11, color: "var(--moss)" }}>read: {pairedCode}</span>}
           </div>
+        ) : (
+          <div style={{ fontSize: 11.5, color: "#8B92A0", marginBottom: 10 }}>Physical NFC pairing requires Chrome on Android over HTTPS.</div>
         )}
 
         <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => { if (name.trim()) { actions.addNfcTag(name, contextType, contextType === "subject" ? contextId : null, pairedCode); setName(""); setPairedCode(null); } }}>Register tag</button>
@@ -878,17 +968,20 @@ function BottomNav({ screen, setScreen, onPlus }) {
 /* ---------------------------------------------------------------------- */
 
 export default function AcademicOS() {
+  // Load persisted state once on mount
+  const _ls = loadState() || {};
+
   const [screen, setScreen] = useState("home");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [scannerSubjectId, setScannerSubjectId] = useState(null);
-  const [subjects, setSubjects] = useState(SEED_SUBJECTS);
-  const [notes, setNotes] = useState(SEED_NOTES);
-  const [tasks, setTasks] = useState(SEED_TASKS);
-  const [inboxItems, setInboxItems] = useState(SEED_INBOX);
+  const [subjects, setSubjects] = useState(_ls.subjects || SEED_SUBJECTS);
+  const [notes, setNotes] = useState(_ls.notes || SEED_NOTES);
+  const [tasks, setTasks] = useState(_ls.tasks || SEED_TASKS);
+  const [inboxItems, setInboxItems] = useState(_ls.inboxItems || SEED_INBOX);
   const [researchProjects] = useState(SEED_RESEARCH_PROJECTS);
-  const [researchEntries, setResearchEntries] = useState(SEED_RESEARCH_ENTRIES);
+  const [researchEntries, setResearchEntries] = useState(_ls.researchEntries || SEED_RESEARCH_ENTRIES);
   const [knowledgeItems] = useState(SEED_KNOWLEDGE);
-  const [nfcTags, setNfcTags] = useState(SEED_TAGS);
+  const [nfcTags, setNfcTags] = useState(_ls.nfcTags || SEED_TAGS);
   const [scanning, setScanning] = useState(null);
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureContext, setQuickCaptureContext] = useState(null);
@@ -896,6 +989,11 @@ export default function AcademicOS() {
   const [nfcListening, setNfcListening] = useState(false);
   const [nfcError, setNfcError] = useState(null);
   const nfcReaderRef = useRef(null);
+
+  // Persist to localStorage whenever important state changes
+  useEffect(() => {
+    saveState({ subjects, notes, tasks, inboxItems, researchEntries, nfcTags });
+  }, [subjects, notes, tasks, inboxItems, researchEntries, nfcTags]);
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
@@ -942,9 +1040,52 @@ export default function AcademicOS() {
     showToast(`Context set: ${tag.tag_name}`);
   }
 
+  // Called only by real NFC hardware reads — shows animation then routes
   function tapTag(tag) {
     setScanning(tag);
     setTimeout(() => { setScanning(null); routeForTag(tag); }, 1050);
+  }
+
+  // Called by "Simulate tap" button — shows the overlay and starts real NFC listener.
+  // Content only opens after an actual physical NFC tap on a matching tag.
+  async function simulateTagScan(tag) {
+    if (!NFC_SUPPORTED) {
+      showToast("Physical NFC required — use Chrome on Android over HTTPS");
+      return;
+    }
+    setScanning(tag); // show overlay to prompt user to tap
+    try {
+      setNfcError(null);
+      setNfcListening(true);
+      const reader = new window.NDEFReader();
+      nfcReaderRef.current = reader;
+      await reader.scan();
+      reader.onreading = (event) => {
+        setNfcListening(false);
+        const code = extractTagCode(event);
+        const serial = event.serialNumber;
+        const scannedTag = nfcTags.find((t) => (code && t.tag_code === code) || (serial && t.serial === serial));
+        if (scannedTag) {
+          setScanning(scannedTag);
+          setTimeout(() => { setScanning(null); routeForTag(scannedTag); }, 1050);
+        } else {
+          setScanning(null);
+          showToast(`Unknown tag (${code || serial || "no data"}) — register it in Profile`);
+        }
+      };
+      reader.onreadingerror = () => {
+        setNfcListening(false);
+        setScanning(null);
+        setNfcError("Couldn't read that tag — hold the phone steady against it and try again.");
+      };
+    } catch (e) {
+      setNfcListening(false);
+      setScanning(null);
+      if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in the site settings and retry.");
+      else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off in settings.");
+      else if (e.name === "SecurityError") setNfcError("NFC scanning requires HTTPS — it won't work on plain http://.");
+      else setNfcError("Couldn't start NFC scan: " + e.message);
+    }
   }
 
   const actions = {
@@ -965,6 +1106,10 @@ export default function AcademicOS() {
     openSubject: (id) => { setActiveSubjectId(id); setScreen("subjectDetail"); },
     addResearchEntry: (projectId, type, content) => setResearchEntries((es) => [{ id: uid(), projectId, type, content, createdAt: new Date().toISOString() }, ...es]),
     endStudySession: () => { showToast("Session saved"); setScreen("home"); },
+    updateNfcTag: (id, patch) => {
+      setNfcTags((tags) => tags.map((t) => t.id === id ? { ...t, ...patch } : t));
+      showToast("Tag updated");
+    },
     addNfcTag: (name, contextType, contextId, pairedCode) => {
       setNfcTags((tags) => [...tags, { id: uid(), tag_code: pairedCode || uid().toUpperCase().slice(0, 5), tag_name: name, context_type: contextType, context_id: contextId, serial: pairedCode || null }]);
       showToast(pairedCode ? "Physical tag paired" : "Tag registered");
@@ -973,6 +1118,7 @@ export default function AcademicOS() {
     openScanner: (subjectId) => { setScannerSubjectId(subjectId); setScreen("scanner"); },
     addNote: (note) => setNotes((ns) => [{ id: uid(), createdAt: new Date().toISOString(), ...note }, ...ns]),
     startNfcScan,
+    simulateTagScan,
   };
 
   function submitQuickCapture({ type, content, subjectId }) {
@@ -989,7 +1135,7 @@ export default function AcademicOS() {
   return (
     <div className="aos-root">
       <style>{CSS}</style>
-      {scanning && <ScanOverlay tag={scanning} />}
+      {scanning && <ScanOverlay tag={scanning} waiting={nfcListening} onCancel={() => { setScanning(null); setNfcListening(false); if (nfcReaderRef.current) { try { nfcReaderRef.current.abort?.(); } catch {} } }} />}
       <div className="aos-content">
         {screen === "home" && <HomeScreen state={state} actions={actions} />}
         {screen === "inbox" && <InboxScreen state={state} actions={actions} />}
