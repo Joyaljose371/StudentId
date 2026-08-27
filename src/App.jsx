@@ -243,28 +243,28 @@ const CSS = `
 
 /* ---- ID card ---- */
 .idcard-wrap{ perspective:900px; width:100%; }
-.idcard{ position:relative; width:100%; max-width:100%; aspect-ratio:1.586/1; border-radius:18px; background:#F9F8F2; color:var(--ink); box-shadow:0 12px 30px rgba(23,28,38,0.22); overflow:hidden; cursor:pointer; transition:transform .15s ease; border:1px solid #CED4CA; }
+.idcard{ position:relative; width:100%; max-width:100%; min-height:286px; border-radius:18px; background:#F9F8F2; color:var(--ink); box-shadow:0 12px 30px rgba(23,28,38,0.22); overflow:hidden; cursor:pointer; transition:transform .15s ease; border:1px solid #CED4CA; }
 .idcard:active{ transform:scale(0.98); }
 .idcard.scanning{ animation:idcard-glow 1.1s ease; }
 @keyframes idcard-glow{ 0%{box-shadow:0 12px 30px rgba(23,28,38,0.22);} 45%{box-shadow:0 0 0 3px var(--brass-soft), 0 0 40px 6px rgba(184,146,60,0.5);} 100%{box-shadow:0 12px 30px rgba(23,28,38,0.22);} }
-.idcard-head{ height:31%; background:linear-gradient(115deg,#233D30 0%,#35513F 72%,#446A54 100%); color:#fff; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px); display:flex; align-items:flex-start; justify-content:space-between; gap:10px; position:relative; overflow:hidden; }
+.idcard-head{ min-height:84px; background:linear-gradient(115deg,#233D30 0%,#35513F 72%,#446A54 100%); color:#fff; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px); display:flex; align-items:flex-start; justify-content:space-between; gap:10px; position:relative; overflow:hidden; }
 .idcard-head::after{ content:""; position:absolute; width:150px; height:150px; border:1px solid rgba(255,255,255,.12); border-radius:50%; right:-66px; top:-88px; box-shadow:0 0 0 22px rgba(255,255,255,.025),0 0 0 44px rgba(255,255,255,.02); }
 .idcard-institution-row{ display:flex; align-items:center; gap:8px; min-width:0; position:relative; z-index:1; }
 .idcard-logo{ width:30px; height:30px; border-radius:50%; border:1px solid rgba(255,255,255,.55); color:#F3D998; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Serif',serif; font-size:10px; font-weight:700; letter-spacing:.06em; flex-shrink:0; }
 .idcard-institution{ font-family:'IBM Plex Serif',serif; font-weight:600; font-size:clamp(10.5px,3vw,13px); line-height:1.05; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 .idcard-campus{ font-family:'IBM Plex Mono',monospace; font-size:clamp(7.5px,2vw,9px); letter-spacing:.12em; text-transform:uppercase; color:#D7E1D8; margin-top:3px; }
 .idcard-student-chip{ position:relative; z-index:1; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:.14em; padding:4px 7px; border:1px solid rgba(255,255,255,.35); border-radius:999px; white-space:nowrap; color:#F6E6BA; }
-.idcard-body{ height:69%; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px) clamp(9px,2.8vw,13px); display:grid; grid-template-columns:clamp(62px,23%,84px) 1fr; grid-template-rows:1fr auto; column-gap:clamp(10px,3vw,14px); row-gap:6px; position:relative; }
+.idcard-body{ min-height:202px; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px) 19px; display:grid; grid-template-columns:clamp(62px,23%,84px) 1fr; grid-template-rows:auto auto; column-gap:clamp(10px,3vw,14px); row-gap:10px; align-content:start; position:relative; }
 .idcard-photo{ grid-row:1 / span 2; width:100%; aspect-ratio:3/4; border-radius:8px; overflow:hidden; background:#E2E5DD; border:1px solid #C8CEC2; display:flex; align-items:center; justify-content:center; color:#7B8378; align-self:start; }
 .idcard-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
 .idcard-photo svg{ opacity:.58; }
-.idcard-details{ min-width:0; align-self:start; padding-top:1px; }
+.idcard-details{ grid-column:2; grid-row:1; min-width:0; align-self:start; padding-top:1px; }
 .idcard-name{ font-family:'IBM Plex Serif',serif; font-size:clamp(14px,4.3vw,18px); line-height:1.05; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#182019; }
 .idcard-programme{ font-size:clamp(9.5px,2.5vw,11px); color:#35513F; font-weight:600; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .idcard-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-top:7px; }
 .idcard-field-label{ font-family:'IBM Plex Mono',monospace; font-size:clamp(6.5px,1.8vw,7.5px); letter-spacing:.09em; text-transform:uppercase; color:#8B9288; }
 .idcard-field-value{ font-family:'IBM Plex Mono',monospace; font-size:clamp(8px,2.2vw,9.5px); color:#273029; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:1px; }
-.idcard-bottom{ min-width:0; display:flex; align-items:flex-end; gap:8px; }
+.idcard-bottom{ grid-column:2; grid-row:2; min-width:0; display:flex; align-items:flex-end; gap:8px; position:relative; z-index:1; align-self:end; margin-top:2px; }
 .idcard-barcode-wrap{ min-width:0; flex:1; color:#151A16; }
 .idcard-barcode{ width:100%; height:clamp(21px,6vw,28px); display:block; }
 .idcard-barcode-text{ font-family:'IBM Plex Mono',monospace; font-size:clamp(6.5px,1.9vw,8px); letter-spacing:.18em; text-align:center; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -273,6 +273,7 @@ const CSS = `
 
 /* ---- scan overlay ---- */
 .scan-overlay{ position:fixed; inset:0; max-width:460px; margin:0 auto; background:rgba(23,28,38,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; color:var(--white); animation:fadein .15s ease; }
+.idcard-recognised-overlay{ overflow-y:auto; justify-content:safe center; padding:24px 0; }
 @keyframes fadein{ from{opacity:0;} to{opacity:1;} }
 .scan-rings{ position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center; margin-bottom:22px; }
 .scan-ring{ position:absolute; border:2px solid var(--brass-soft); border-radius:50%; width:40px; height:40px; animation:scan-pulse 1.1s ease-out infinite; }
@@ -409,8 +410,8 @@ function ScanOverlay({ tag, waiting, onCancel }) {
 
 function IDCardRecognisedOverlay({ tag, profile }) {
   return (
-    <div className="scan-overlay">
-      <div style={{ width: "calc(100% - 48px)", maxWidth: 360, marginBottom: 26 }}>
+    <div className="scan-overlay idcard-recognised-overlay">
+      <div style={{ width: "calc(100% - 48px)", maxWidth: 360, marginBottom: 26, flexShrink: 0 }}>
         <VirtualIDCard onScan={undefined} isScanning={false} profile={profile} />
       </div>
       <div className="scan-label" style={{ color: "var(--brass-soft)" }}>Card recognised</div>
