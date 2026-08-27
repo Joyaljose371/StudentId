@@ -240,8 +240,8 @@ function VirtualIDCard({ onScan, isScanning }) {
           </div>
           <Radio size={18} className="idcard-nfc-icon" />
         </div>
-        <div className="idcard-name">Ananya Krishnan</div>
-        <div className="idcard-meta">PSYCHOLOGY · YEAR 3 · ID 220145</div>
+        <div className="idcard-name">Joyal Jose</div>
+        <div className="idcard-meta">PSYCHOLOGY · PG 1ST Year · ID 220145</div>
         <div className="idcard-tap-hint">TAP CARD TO SCAN</div>
         <div className="idcard-nfc">
           <Radio size={0} />
