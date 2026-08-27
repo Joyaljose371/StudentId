@@ -3,7 +3,7 @@ import {
   Home, Inbox as InboxIcon, BookOpen, FlaskConical, User, Plus, Camera,
   Search, X, Check, Clock, Brain, CreditCard, ChevronLeft, ChevronRight,
   Upload, Loader2, AlertTriangle, RotateCcw, Radio, Sparkles, ListChecks,
-  NotebookPen, Armchair, DoorOpen, Tag, Play, Square, ArrowLeft, Trash2
+  NotebookPen, Armchair, DoorOpen, Tag, Play, Square, ArrowLeft, Trash2, Eye, Bell
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -14,6 +14,28 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const now = () => new Date();
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtDate = (d) => d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+const fmtDateTime = (value) => {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
+function splitNoteText(value) {
+  const normalized = (value || "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) return { title: "Untitled note", content: "" };
+  const lines = normalized.split("\n");
+  const firstIndex = lines.findIndex((line) => line.trim());
+  const title = (lines[firstIndex] || "Untitled note").trim().slice(0, 100);
+  const content = lines.slice(firstIndex + 1).join("\n").trim();
+  return { title, content };
+}
+
+function defaultReminderLocalValue() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setSeconds(0, 0);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /* ---------------------------------------------------------------------- */
 /*  localStorage persistence                                              */
@@ -477,9 +499,13 @@ function NfcRealScanBanner({ state, actions }) {
 /* ---------------------------------------------------------------------- */
 
 function HomeScreen({ state, actions }) {
-  const { subjects, tasks, notes, scanning, profile } = state;
+  const { subjects, tasks, notes, scanning, profile, reminders } = state;
   const todaysTasks = tasks.filter((t) => t.status !== "done").slice(0, 4);
   const recentNotes = [...notes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
+  const upcomingReminders = [...(reminders || [])]
+    .filter((r) => r.status === "pending" && new Date(r.reminderAt).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.reminderAt) - new Date(b.reminderAt))
+    .slice(0, 3);
 
   return (
     <div>
@@ -498,16 +524,45 @@ function HomeScreen({ state, actions }) {
       </div>
       <div className="aos-card">
         {todaysTasks.length === 0 && <EmptyState text="Nothing open — tap + to add one." />}
-        {todaysTasks.map((t, i) => (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? "1px solid var(--paper-deep)" : "none" }}>
-            <div onClick={() => actions.toggleTask(t.id)} style={{ width: 18, height: 18, borderRadius: 5, border: "1.5px solid var(--moss)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-              {t.status === "done" && <Check size={12} color="var(--moss)" />}
+        {todaysTasks.map((t, i) => {
+          const taskSubject = subjects.find((s) => s.id === t.subjectId);
+          return (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? "1px solid var(--paper-deep)" : "none" }}>
+              <div onClick={() => actions.toggleTask(t.id)} style={{ width: 18, height: 18, borderRadius: 5, border: "1.5px solid var(--moss)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                {t.status === "done" && <Check size={12} color="var(--moss)" />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, textDecoration: t.status === "done" ? "line-through" : "none", color: t.status === "done" ? "#8B92A0" : "var(--ink)" }}>{t.title}</div>
+                <div style={{ marginTop: 4 }}>
+                  {taskSubject ? <Pill bg={taskSubject.color + "22"} fg={taskSubject.color}>{taskSubject.name}</Pill> : <Pill bg="#ECEDE8" fg="#6F766D">General</Pill>}
+                </div>
+              </div>
+              {t.deadline && <Pill bg="#F3E7DC" fg="var(--clay)">{t.deadline}</Pill>}
             </div>
-            <div style={{ flex: 1, fontSize: 13.5, textDecoration: t.status === "done" ? "line-through" : "none", color: t.status === "done" ? "#8B92A0" : "var(--ink)" }}>{t.title}</div>
-            {t.deadline && <Pill bg="#F3E7DC" fg="var(--clay)">{t.deadline}</Pill>}
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {upcomingReminders.length > 0 && (
+        <>
+          <div className="aos-divider" />
+          <div className="aos-serif" style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Reminders</div>
+          <div className="aos-card">
+            {upcomingReminders.map((r, i) => {
+              const reminderSubject = subjects.find((s) => s.id === r.subjectId);
+              return (
+                <div key={r.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderTop: i > 0 ? "1px solid var(--paper-deep)" : "none" }}>
+                  <Bell size={15} color="var(--brass)" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>{r.content}</div>
+                    <div style={{ fontSize: 11.5, color: "#8B92A0", marginTop: 3 }}>{fmtDateTime(r.reminderAt)}{reminderSubject ? ` · ${reminderSubject.name}` : ""}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <div className="aos-divider" />
 
@@ -517,11 +572,17 @@ function HomeScreen({ state, actions }) {
         const subj = subjects.find((s) => s.id === n.subjectId);
         return (
           <div key={n.id} className="aos-card" style={{ marginBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{n.title}</div>
-              {subj && <Pill bg={subj.color + "22"} fg={subj.color}>{subj.name}</Pill>}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5 }}>{n.title}</div>
+                {subj && <div style={{ marginTop: 4 }}><Pill bg={subj.color + "22"} fg={subj.color}>{subj.name}</Pill></div>}
+              </div>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <button className="aos-btn aos-btn-ghost" aria-label="Preview note" title="Preview note" style={{ padding: 6 }} onClick={() => actions.previewNote(n.id)}><Eye size={14} /></button>
+                <button className="aos-btn aos-btn-ghost" aria-label="Delete note" title="Delete note" style={{ padding: 6, color: "var(--clay)" }} onClick={() => actions.deleteNote(n.id)}><Trash2 size={14} /></button>
+              </div>
             </div>
-            <div style={{ fontSize: 12.5, color: "#5A6270", marginTop: 4 }}>{n.content.slice(0, 90)}{n.content.length > 90 ? "…" : ""}</div>
+            {n.content && <div style={{ fontSize: 12.5, color: "#5A6270", marginTop: 6 }}>{n.content.slice(0, 90)}{n.content.length > 90 ? "…" : ""}</div>}
           </div>
         );
       })}
@@ -535,18 +596,30 @@ function InboxScreen({ state, actions }) {
     <div>
       <Eyebrow>Academic Inbox</Eyebrow>
       <div className="aos-h1">Inbox</div>
+      <div className="aos-card" style={{ marginBottom: 12, background: "#F3F4EF" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600 }}>Temporary capture space</div>
+        <div style={{ fontSize: 11.5, color: "#6F766D", marginTop: 3 }}>Save something before you forget it, then route it to a Note, Task, or Research item when you have context.</div>
+      </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <input className="aos-input" placeholder="Capture a thought, question, idea…" value={draft} onChange={(e) => setDraft(e.target.value)}
+        <input className="aos-input" placeholder="Capture something to organise later…" value={draft} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { actions.addInboxItem(draft); setDraft(""); } }} />
         <button className="aos-btn aos-btn-primary" onClick={() => { if (draft.trim()) { actions.addInboxItem(draft); setDraft(""); } }}><Plus size={16} /></button>
       </div>
-      {state.inboxItems.length === 0 && <EmptyState text="Inbox zero. Nice." />}
+      {state.inboxItems.length === 0 && <EmptyState text="Inbox zero — everything has been organised." />}
       {state.inboxItems.map((item) => (
-        <div key={item.id} className="aos-card" style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-          <div style={{ fontSize: 13.5 }}>{item.content}</div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={() => actions.processInboxToTask(item.id)}>→ Task</button>
-            <Trash2 size={15} color="#B7BECC" style={{ cursor: "pointer" }} onClick={() => actions.deleteInboxItem(item.id)} />
+        <div key={item.id} className="aos-card" style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Pill bg="#ECEDE8" fg="#6F766D">unprocessed</Pill>
+              <div style={{ fontSize: 13.5, marginTop: 7, whiteSpace: "pre-wrap" }}>{item.content}</div>
+              <div style={{ fontSize: 10.5, color: "#9A9F96", marginTop: 5 }}>{fmtDateTime(item.createdAt)}</div>
+            </div>
+            <Trash2 size={16} color="#B4482D" style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => actions.deleteInboxItem(item.id)} />
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+            <button className="aos-btn aos-btn-ghost" style={{ padding: "6px 9px", fontSize: 11.5 }} onClick={() => actions.processInbox(item.id, "note")}>→ Note</button>
+            <button className="aos-btn aos-btn-ghost" style={{ padding: "6px 9px", fontSize: 11.5 }} onClick={() => actions.processInbox(item.id, "task")}>→ Task</button>
+            <button className="aos-btn aos-btn-ghost" style={{ padding: "6px 9px", fontSize: 11.5 }} onClick={() => actions.processInbox(item.id, "idea")}>→ Research</button>
           </div>
         </div>
       ))}
@@ -645,33 +718,78 @@ function SubjectDetailScreen({ state, actions }) {
 function ResearchScreen({ state, actions }) {
   const [entryDraft, setEntryDraft] = useState("");
   const [entryType, setEntryType] = useState("idea");
+  const [filter, setFilter] = useState("all");
   const project = state.researchProjects[0];
-  const entries = state.researchEntries.filter((e) => e.projectId === project?.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const allEntries = state.researchEntries.filter((e) => e.projectId === project?.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const types = ["idea", "paper", "citation", "methodology", "question", "limitation", "hypothesis"];
+  const filteredEntries = filter === "all" ? allEntries : allEntries.filter((e) => e.type === filter);
+  const counts = {
+    ideas: allEntries.filter((e) => e.type === "idea").length,
+    evidence: allEntries.filter((e) => e.type === "paper" || e.type === "citation").length,
+    methods: allEntries.filter((e) => e.type === "methodology").length,
+    questions: allEntries.filter((e) => e.type === "question").length,
+  };
+  const add = () => {
+    if (!entryDraft.trim() || !project) return;
+    actions.addResearchEntry(project.id, entryType, entryDraft.trim());
+    setEntryDraft("");
+  };
   return (
     <div>
       <Eyebrow>Research Hub</Eyebrow>
       <div className="aos-h1">Research</div>
-      {project && (
-        <div className="aos-card" style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 600 }}>{project.title}</div>
-          <div style={{ fontSize: 12, color: "#8B92A0", marginTop: 2 }}>{project.status}</div>
+
+      {project ? (
+        <div className="aos-card" style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "#8B92A0", marginBottom: 3 }}>ACTIVE PROJECT</div>
+              <div className="aos-serif" style={{ fontSize: 17, fontWeight: 600 }}>{project.title}</div>
+            </div>
+            <Pill bg="#EAF0E9" fg="var(--moss)">{project.status}</Pill>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 12 }}>
+            {[
+              ["Ideas", counts.ideas], ["Evidence", counts.evidence], ["Methods", counts.methods], ["Questions", counts.questions]
+            ].map(([label, value]) => (
+              <div key={label} style={{ background: "#F3F4EF", borderRadius: 8, padding: "8px 5px", textAlign: "center" }}>
+                <div className="aos-serif" style={{ fontSize: 17, fontWeight: 600 }}>{value}</div>
+                <div style={{ fontSize: 9.5, color: "#7E857B" }}>{label}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-        {types.map((t) => (
-          <span key={t} onClick={() => setEntryType(t)} className="aos-pill" style={{ cursor: "pointer", background: entryType === t ? "var(--ink)" : "var(--white)", color: entryType === t ? "var(--white)" : "var(--ink)", border: "1px solid var(--paper-deep)" }}>{t}</span>
+      ) : <EmptyState text="No active research project." />}
+
+      <div className="aos-card" style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Capture to this project</div>
+        <div style={{ fontSize: 11.5, color: "#8B92A0", marginBottom: 9 }}>Keep ideas, evidence, methods, questions and limitations in one research trail.</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
+          {types.map((t) => (
+            <span key={t} onClick={() => setEntryType(t)} className="aos-pill" style={{ cursor: "pointer", background: entryType === t ? "var(--ink)" : "var(--white)", color: entryType === t ? "var(--white)" : "var(--ink)", border: "1px solid var(--paper-deep)" }}>{t}</span>
+          ))}
+        </div>
+        <textarea className="aos-input" rows={3} placeholder={`Add a ${entryType}…`} value={entryDraft} onChange={(e) => setEntryDraft(e.target.value)} style={{ marginBottom: 8 }} />
+        <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={add}><Plus size={15} />Add {entryType}</button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <div className="aos-serif" style={{ fontSize: 15, fontWeight: 600 }}>Research trail</div>
+        <span style={{ fontSize: 11, color: "#8B92A0" }}>{filteredEntries.length} items</span>
+      </div>
+      <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 7, marginBottom: 2 }}>
+        {["all", ...types].map((t) => (
+          <span key={t} onClick={() => setFilter(t)} className="aos-pill" style={{ cursor: "pointer", flexShrink: 0, background: filter === t ? "#E7EEF2" : "var(--white)", color: filter === t ? "var(--denim)" : "#68717D", border: "1px solid var(--paper-deep)" }}>{t}</span>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <input className="aos-input" placeholder={`New ${entryType}…`} value={entryDraft} onChange={(e) => setEntryDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && entryDraft.trim()) { actions.addResearchEntry(project.id, entryType, entryDraft); setEntryDraft(""); } }} />
-        <button className="aos-btn aos-btn-primary" onClick={() => { if (entryDraft.trim()) { actions.addResearchEntry(project.id, entryType, entryDraft); setEntryDraft(""); } }}><Plus size={16} /></button>
-      </div>
-      {entries.map((e) => (
+      {filteredEntries.length === 0 && <EmptyState text="Nothing in this research view yet." />}
+      {filteredEntries.map((e) => (
         <div key={e.id} className="aos-card" style={{ marginBottom: 8 }}>
-          <Pill bg="#E7EEF2" fg="var(--denim)">{e.type}</Pill>
-          <div style={{ fontSize: 13.5, marginTop: 6 }}>{e.content}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <Pill bg="#E7EEF2" fg="var(--denim)">{e.type}</Pill>
+            <span style={{ fontSize: 10.5, color: "#9A9F96" }}>{fmtDateTime(e.createdAt)}</span>
+          </div>
+          <div style={{ fontSize: 13.5, marginTop: 7, whiteSpace: "pre-wrap" }}>{e.content}</div>
         </div>
       ))}
     </div>
@@ -1165,10 +1283,26 @@ Rules: do not invent content that is not visibly present, preserve researcher na
 /* ---------------------------------------------------------------------- */
 
 function QuickCaptureModal({ context, subjects, onClose, onSubmit }) {
-  const [type, setType] = useState("note");
-  const [content, setContent] = useState("");
+  const [type, setType] = useState(context?.initialType || "note");
+  const [content, setContent] = useState(context?.initialContent || "");
   const [subjectId, setSubjectId] = useState(context?.subjectId || subjects[0]?.id || "");
+  const [reminderAt, setReminderAt] = useState(defaultReminderLocalValue());
+  const [error, setError] = useState("");
   const types = ["note", "task", "idea", "question", "reminder"];
+
+  const save = () => {
+    const clean = content.trim();
+    if (!clean) { setError("Add some content first."); return; }
+    if (type === "reminder") {
+      const when = new Date(reminderAt);
+      if (!reminderAt || Number.isNaN(when.getTime())) { setError("Choose a reminder date and time."); return; }
+      if (when.getTime() <= Date.now()) { setError("Choose a future time for the reminder."); return; }
+      onSubmit({ type, content: clean, subjectId, reminderAt: when.toISOString() });
+      return;
+    }
+    onSubmit({ type, content: clean, subjectId });
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
@@ -1177,18 +1311,73 @@ function QuickCaptureModal({ context, subjects, onClose, onSubmit }) {
           <X size={18} onClick={onClose} style={{ cursor: "pointer" }} />
         </div>
         {context?.tagName && <div style={{ fontSize: 12, color: "#8B92A0", marginBottom: 10 }}>via NFC · {context.tagName}</div>}
+        {context?.source === "inbox" && <div style={{ fontSize: 12, color: "var(--moss)", marginBottom: 10 }}>Processing an Inbox item — choose its final subject and save.</div>}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {types.map((t) => (
-            <span key={t} className="aos-pill" style={{ cursor: "pointer", padding: "6px 12px", background: type === t ? "var(--ink)" : "var(--white)", color: type === t ? "var(--white)" : "var(--ink)", border: "1px solid var(--paper-deep)" }} onClick={() => setType(t)}>{t}</span>
+            <span key={t} className="aos-pill" style={{ cursor: "pointer", padding: "6px 12px", background: type === t ? "var(--ink)" : "var(--white)", color: type === t ? "var(--white)" : "var(--ink)", border: "1px solid var(--paper-deep)" }} onClick={() => { setType(t); setError(""); }}>{t}</span>
           ))}
         </div>
-        <textarea className="aos-input" rows={3} placeholder="What's on your mind?" value={content} onChange={(e) => setContent(e.target.value)} style={{ marginBottom: 10 }} autoFocus />
-        {type !== "note" || true ? (
-          <select className="aos-input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ marginBottom: 12 }}>
-            {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        ) : null}
-        <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => { if (content.trim()) { onSubmit({ type, content, subjectId }); } }}>Save</button>
+        {type === "note" && <div style={{ fontSize: 11.5, color: "#7E857B", marginBottom: 7 }}>First line = note heading. Everything after the first line break = note content.</div>}
+        <textarea className="aos-input" rows={type === "note" ? 5 : 3} placeholder={type === "note" ? "Selective Attention\nBroadbent proposed an early filter..." : type === "reminder" ? "What should I remind you about?" : "What's on your mind?"} value={content} onChange={(e) => { setContent(e.target.value); setError(""); }} style={{ marginBottom: 10 }} autoFocus />
+        <select className="aos-input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ marginBottom: type === "reminder" ? 10 : 12 }}>
+          <option value="">General / no subject</option>
+          {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        {type === "reminder" && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="aos-mono" style={{ fontSize: 10.5, color: "#7E857B", marginBottom: 5 }}>REMIND ME AT</div>
+            <input className="aos-input" type="datetime-local" value={reminderAt} onChange={(e) => { setReminderAt(e.target.value); setError(""); }} />
+            <div style={{ fontSize: 10.5, color: "#8B92A0", marginTop: 5 }}>When due, Academic OS shows an in-app alarm and uses a browser notification if you allow notifications.</div>
+          </div>
+        )}
+        {error && <div style={{ fontSize: 11.5, color: "var(--clay)", marginBottom: 9 }}>{error}</div>}
+        <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={save}>{type === "reminder" ? "Set reminder" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+
+function NotePreviewModal({ note, subject, onClose, onDelete }) {
+  if (!note) return null;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="aos-serif" style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.15 }}>{note.title}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+              {subject && <Pill bg={subject.color + "22"} fg={subject.color}>{subject.name}</Pill>}
+              <Pill bg="#ECEDE8" fg="#6F766D">{note.source || "manual"}</Pill>
+            </div>
+          </div>
+          <X size={18} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        </div>
+        <div style={{ fontSize: 11, color: "#8B92A0", marginBottom: 10 }}>{fmtDateTime(note.createdAt)}</div>
+        <div className="aos-card" style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap", marginBottom: 12 }}>
+          {note.content || <span style={{ color: "#8B92A0" }}>This note contains only a heading.</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="aos-btn aos-btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
+          <button className="aos-btn" style={{ flex: 1, background: "#F3E7DC", color: "var(--clay)" }} onClick={() => onDelete(note.id)}><Trash2 size={14} />Delete note</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReminderAlert({ reminder, subject, onDismiss, onSnooze }) {
+  if (!reminder) return null;
+  return (
+    <div className="modal-backdrop" style={{ alignItems: "center", padding: 16 }}>
+      <div className="aos-card" style={{ borderRadius: 16, boxShadow: "0 18px 50px rgba(23,28,38,.28)" }}>
+        <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#F3E7DC", color: "var(--clay)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}><Bell size={20} /></div>
+        <Eyebrow>Reminder</Eyebrow>
+        <div className="aos-serif" style={{ fontSize: 20, fontWeight: 600, marginTop: 4, whiteSpace: "pre-wrap" }}>{reminder.content}</div>
+        <div style={{ fontSize: 12, color: "#7E857B", marginTop: 8 }}>{fmtDateTime(reminder.reminderAt)}{subject ? ` · ${subject.name}` : ""}</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button className="aos-btn aos-btn-ghost" style={{ flex: 1 }} onClick={() => onSnooze(reminder.id)}>Snooze 10 min</button>
+          <button className="aos-btn aos-btn-primary" style={{ flex: 1 }} onClick={() => onDismiss(reminder.id)}>Dismiss</button>
+        </div>
       </div>
     </div>
   );
@@ -1242,6 +1431,7 @@ export default function AcademicOS() {
   const [notes, setNotes] = useState(_ls.notes || SEED_NOTES);
   const [tasks, setTasks] = useState(_ls.tasks || SEED_TASKS);
   const [inboxItems, setInboxItems] = useState(_ls.inboxItems || SEED_INBOX);
+  const [reminders, setReminders] = useState(_ls.reminders || []);
   const [researchProjects] = useState(SEED_RESEARCH_PROJECTS);
   const [researchEntries, setResearchEntries] = useState(_ls.researchEntries || SEED_RESEARCH_ENTRIES);
   const [knowledgeItems] = useState(SEED_KNOWLEDGE);
@@ -1249,6 +1439,8 @@ export default function AcademicOS() {
   const [scanning, setScanning] = useState(null);
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureContext, setQuickCaptureContext] = useState(null);
+  const [previewNoteId, setPreviewNoteId] = useState(null);
+  const [activeReminder, setActiveReminder] = useState(null);
   const [toast, setToast] = useState(null);
   const [nfcListening, setNfcListening] = useState(false);
   const [nfcError, setNfcError] = useState(null);
@@ -1284,10 +1476,63 @@ export default function AcademicOS() {
     };
   }, []);
 
+  // Register a lightweight service worker so due reminders can use Android/browser notifications
+  // while the web app is running. It does not alter navigation or cache app content.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/reminder-sw.js").catch(() => {});
+  }, []);
+
   // Persist to localStorage whenever important state changes
   useEffect(() => {
-    saveState({ subjects, notes, tasks, inboxItems, researchEntries, nfcTags, profile });
-  }, [subjects, notes, tasks, inboxItems, researchEntries, nfcTags, profile]);
+    saveState({ subjects, notes, tasks, inboxItems, reminders, researchEntries, nfcTags, profile });
+  }, [subjects, notes, tasks, inboxItems, reminders, researchEntries, nfcTags, profile]);
+
+  // Fire saved reminders while the app/PWA is running. System notifications are used when allowed;
+  // the in-app reminder overlay is always available while the app is active.
+  useEffect(() => {
+    const restoreTriggered = reminders.find((r) => r.status === "triggered");
+    if (restoreTriggered && !activeReminder) {
+      setActiveReminder(restoreTriggered);
+      return;
+    }
+
+    const checkReminders = () => {
+      if (activeReminder) return;
+      const due = reminders
+        .filter((r) => r.status === "pending" && new Date(r.reminderAt).getTime() <= Date.now())
+        .sort((a, b) => new Date(a.reminderAt) - new Date(b.reminderAt))[0];
+      if (!due) return;
+      setReminders((items) => items.map((r) => r.id === due.id ? { ...r, status: "triggered", triggeredAt: new Date().toISOString() } : r));
+      setActiveReminder(due);
+      try { navigator.vibrate?.([180, 90, 180]); } catch { /* optional */ }
+      try {
+        if ("Notification" in window && Notification.permission === "granted") {
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.ready
+              .then((registration) => registration.showNotification("Academic OS reminder", {
+                body: due.content,
+                tag: `academic-os-${due.id}`,
+                renotify: true,
+                vibrate: [180, 90, 180],
+              }))
+              .catch(() => { try { new Notification("Academic OS reminder", { body: due.content, tag: `academic-os-${due.id}` }); } catch {} });
+          } else {
+            new Notification("Academic OS reminder", { body: due.content, tag: `academic-os-${due.id}` });
+          }
+        }
+      } catch { /* in-app alert remains the fallback */ }
+    };
+
+    checkReminders();
+    const timer = window.setInterval(checkReminders, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") checkReminders(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [reminders, activeReminder]);
 
   // Handle deep-link launch: ?nfc=CODE or ?screen=xxx
   useEffect(() => {
@@ -1442,14 +1687,25 @@ export default function AcademicOS() {
     },
     tapTag,
     toggleTask: (id) => setTasks((ts) => ts.map((t) => t.id === id ? { ...t, status: t.status === "done" ? "todo" : "done" } : t)),
-    addInboxItem: (content) => setInboxItems((items) => [{ id: uid(), content, type: "note", createdAt: new Date().toISOString() }, ...items]),
+    addInboxItem: (content) => setInboxItems((items) => [{ id: uid(), content, type: "capture", createdAt: new Date().toISOString() }, ...items]),
     deleteInboxItem: (id) => setInboxItems((items) => items.filter((i) => i.id !== id)),
-    processInboxToTask: (id) => {
+    processInbox: (id, targetType) => {
       const item = inboxItems.find((i) => i.id === id);
       if (!item) return;
-      setTasks((ts) => [{ id: uid(), title: item.content, subjectId: subjects[0]?.id, status: "todo", deadline: null }, ...ts]);
-      setInboxItems((items) => items.filter((i) => i.id !== id));
-      showToast("Moved to Tasks");
+      setQuickCaptureContext({
+        source: "inbox",
+        inboxId: id,
+        initialType: targetType,
+        initialContent: item.content,
+      });
+      setQuickCaptureOpen(true);
+    },
+    previewNote: (id) => setPreviewNoteId(id),
+    deleteNote: (id) => {
+      if (!window.confirm("Delete this note?")) return;
+      setNotes((items) => items.filter((n) => n.id !== id));
+      setPreviewNoteId((current) => current === id ? null : current);
+      showToast("Note deleted");
     },
     addSubject: (name) => setSubjects((s) => [...s, { id: uid(), name, code: "", color: ["#3B6E8F", "#35513F", "#B4482D", "#7A5C9E"][s.length % 4] }]),
     openSubject: (id) => { setActiveSubjectId(id); setScreen("subjectDetail"); },
@@ -1478,16 +1734,49 @@ export default function AcademicOS() {
     simulateTagScan,
   };
 
-  function submitQuickCapture({ type, content, subjectId }) {
-    if (type === "task") setTasks((ts) => [{ id: uid(), title: content, subjectId, status: "todo", deadline: null }, ...ts]);
-    else if (type === "idea") setResearchEntries((es) => [{ id: uid(), projectId: researchProjects[0]?.id, type: "idea", content, createdAt: new Date().toISOString() }, ...es]);
-    else if (type === "note") setNotes((ns) => [{ id: uid(), subjectId, title: content.slice(0, 36), content, rawOcr: "", correctedText: content, type: "quick", source: "manual", createdAt: new Date().toISOString() }, ...ns]);
-    else setInboxItems((items) => [{ id: uid(), content, type, createdAt: new Date().toISOString() }, ...items]);
+  async function submitQuickCapture({ type, content, subjectId, reminderAt }) {
+    if (type === "task") {
+      setTasks((ts) => [{ id: uid(), title: content, subjectId, status: "todo", deadline: null }, ...ts]);
+    } else if (type === "idea") {
+      setResearchEntries((es) => [{ id: uid(), projectId: researchProjects[0]?.id, type: "idea", content, createdAt: new Date().toISOString() }, ...es]);
+    } else if (type === "note") {
+      const parsed = splitNoteText(content);
+      setNotes((ns) => [{ id: uid(), subjectId, title: parsed.title, content: parsed.content, rawOcr: "", correctedText: parsed.content, type: "quick", source: "manual", createdAt: new Date().toISOString() }, ...ns]);
+    } else if (type === "reminder") {
+      const reminder = { id: uid(), content, subjectId, reminderAt, status: "pending", createdAt: new Date().toISOString() };
+      setReminders((items) => [reminder, ...items]);
+      if ("Notification" in window && Notification.permission === "default") {
+        try { await Notification.requestPermission(); } catch { /* in-app reminder still works */ }
+      }
+    } else {
+      setInboxItems((items) => [{ id: uid(), content, type, createdAt: new Date().toISOString() }, ...items]);
+    }
+
+    if (quickCaptureContext?.inboxId) {
+      setInboxItems((items) => items.filter((i) => i.id !== quickCaptureContext.inboxId));
+    }
     setQuickCaptureOpen(false);
-    showToast("Saved");
+    setQuickCaptureContext(null);
+    showToast(type === "reminder" ? "Reminder set" : "Saved");
   }
 
-  const state = { profile, subjects, notes, tasks, inboxItems, researchProjects, researchEntries, knowledgeItems, nfcTags, scanning, activeSubjectId, scannerSubjectId, nfcListening, nfcError, nfcSupported: NFC_SUPPORTED };
+  const state = { profile, subjects, notes, tasks, inboxItems, reminders, researchProjects, researchEntries, knowledgeItems, nfcTags, scanning, activeSubjectId, scannerSubjectId, nfcListening, nfcError, nfcSupported: NFC_SUPPORTED };
+  const previewNote = notes.find((n) => n.id === previewNoteId) || null;
+  const previewSubject = previewNote ? subjects.find((s) => s.id === previewNote.subjectId) : null;
+  const reminderSubject = activeReminder ? subjects.find((s) => s.id === activeReminder.subjectId) : null;
+
+  function dismissReminder(id) {
+    setReminders((items) => items.map((r) => r.id === id ? { ...r, status: "done", dismissedAt: new Date().toISOString() } : r));
+    setActiveReminder(null);
+    showToast("Reminder dismissed");
+  }
+
+  function snoozeReminder(id) {
+    const next = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    setReminders((items) => items.map((r) => r.id === id ? { ...r, status: "pending", reminderAt: next, triggeredAt: null } : r));
+    setActiveReminder(null);
+    showToast("Snoozed for 10 minutes");
+  }
 
   return (
     <div className="aos-root">
@@ -1521,8 +1810,24 @@ export default function AcademicOS() {
         <QuickCaptureModal
           context={quickCaptureContext}
           subjects={subjects}
-          onClose={() => setQuickCaptureOpen(false)}
+          onClose={() => { setQuickCaptureOpen(false); setQuickCaptureContext(null); }}
           onSubmit={submitQuickCapture}
+        />
+      )}
+      {previewNote && (
+        <NotePreviewModal
+          note={previewNote}
+          subject={previewSubject}
+          onClose={() => setPreviewNoteId(null)}
+          onDelete={actions.deleteNote}
+        />
+      )}
+      {activeReminder && (
+        <ReminderAlert
+          reminder={activeReminder}
+          subject={reminderSubject}
+          onDismiss={dismissReminder}
+          onSnooze={snoozeReminder}
         />
       )}
       <BottomNav screen={screen} setScreen={setScreen} onPlus={() => actions.openQuickCapture(null)} />
