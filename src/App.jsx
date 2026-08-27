@@ -113,10 +113,15 @@ const SEED_TAGS = [
 ];
 
 const SEED_PROFILE = {
-  name: "Ananya Krishnan",
-  department: "Psychology",
-  year: "Year 3",
-  studentId: "220145",
+  name: "Joyal Jose",
+  institution: "Chinmaya Vishwa Vidyapeeth",
+  campus: "Kochi",
+  programme: "M.Sc. Applied Psychology",
+  department: "Applied Psychology",
+  year: "Semester 1",
+  studentId: "",
+  validThru: "",
+  photoDataUrl: "",
 };
 
 /* Parse ?nfc=CODE or ?screen=xxx from the URL on launch */
@@ -125,6 +130,70 @@ function getLaunchParams() {
     const p = new URLSearchParams(window.location.search);
     return { nfcCode: p.get("nfc"), screen: p.get("screen"), subjectId: p.get("subjectId") };
   } catch { return {}; }
+}
+
+function resizeProfilePhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { resolve(""); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read photo"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not load photo"));
+      img.onload = () => {
+        const size = 560;
+        const scale = Math.max(size / img.width, size / img.height);
+        const sw = size / scale;
+        const sh = size / scale;
+        const sx = Math.max(0, (img.width - sw) / 2);
+        const sy = Math.max(0, (img.height - sh) / 2);
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.84));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const CODE39_PATTERNS = {
+  "0":"nnnwwnwnn","1":"wnnwnnnnw","2":"nnwwnnnnw","3":"wnwwnnnnn","4":"nnnwwnnnw",
+  "5":"wnnwwnnnn","6":"nnwwwnnnn","7":"nnnwnnwnw","8":"wnnwnnwnn","9":"nnwwnnwnn",
+  "A":"wnnnnwnnw","B":"nnwnnwnnw","C":"wnwnnwnnn","D":"nnnnwwnnw","E":"wnnnwwnnn",
+  "F":"nnwnwwnnn","G":"nnnnnwwnw","H":"wnnnnwwnn","I":"nnwnnwwnn","J":"nnnnwwwnn",
+  "K":"wnnnnnnww","L":"nnwnnnnww","M":"wnwnnnnwn","N":"nnnnwnnww","O":"wnnnwnnwn",
+  "P":"nnwnwnnwn","Q":"nnnnnnwww","R":"wnnnnnwwn","S":"nnwnnnwwn","T":"nnnnwnwwn",
+  "U":"wwnnnnnnw","V":"nwwnnnnnw","W":"wwwnnnnnn","X":"nwnnwnnnw","Y":"wwnnwnnnn",
+  "Z":"nwwnwnnnn","-":"nwnnnnwnw",".":"wwnnnnwnn"," ":"nwwnnnwnn","*":"nwnnwnwnn"
+};
+
+function Code39Barcode({ value }) {
+  const clean = (value || "STUDENT").toUpperCase().replace(/[^0-9A-Z. -]/g, "").slice(0, 28) || "STUDENT";
+  const encoded = `*${clean}*`;
+  const narrow = 1.35, wide = 3.4, gap = 1.35;
+  let x = 0;
+  const bars = [];
+  for (const char of encoded) {
+    const pattern = CODE39_PATTERNS[char] || CODE39_PATTERNS["-"];
+    for (let i = 0; i < pattern.length; i++) {
+      const width = pattern[i] === "w" ? wide : narrow;
+      if (i % 2 === 0) bars.push({ x, width });
+      x += width;
+    }
+    x += gap;
+  }
+  return (
+    <div className="idcard-barcode-wrap" aria-label={`Barcode ${clean}`}>
+      <svg className="idcard-barcode" viewBox={`0 0 ${x} 34`} preserveAspectRatio="none" role="img">
+        {bars.map((bar, i) => <rect key={i} x={bar.x} y="0" width={bar.width} height="34" fill="currentColor" />)}
+      </svg>
+      <div className="idcard-barcode-text">{clean}</div>
+    </div>
+  );
 }
 
 const TAG_ICON = { dashboard: CreditCard, subject: NotebookPen, research_project: FlaskConical, study_session: Armchair, daily_review: DoorOpen, quick_capture: Plus };
@@ -174,22 +243,33 @@ const CSS = `
 
 /* ---- ID card ---- */
 .idcard-wrap{ perspective:900px; width:100%; }
-.idcard{ position:relative; width:100%; max-width:100%; aspect-ratio:1.586/1; border-radius:16px; background:linear-gradient(135deg, var(--ink) 0%, var(--ink-soft) 60%, #333e52 100%); color:var(--white); padding:clamp(12px,4vw,18px); box-shadow:0 10px 30px rgba(23,28,38,0.35); overflow:hidden; cursor:pointer; transition:transform .15s ease; border:1px solid #3a4356; }
+.idcard{ position:relative; width:100%; max-width:100%; aspect-ratio:1.586/1; border-radius:18px; background:#F9F8F2; color:var(--ink); box-shadow:0 12px 30px rgba(23,28,38,0.22); overflow:hidden; cursor:pointer; transition:transform .15s ease; border:1px solid #CED4CA; }
 .idcard:active{ transform:scale(0.98); }
 .idcard.scanning{ animation:idcard-glow 1.1s ease; }
-@keyframes idcard-glow{ 0%{box-shadow:0 10px 30px rgba(23,28,38,0.35);} 45%{box-shadow:0 0 0 3px var(--brass-soft), 0 0 40px 6px rgba(184,146,60,0.6);} 100%{box-shadow:0 10px 30px rgba(23,28,38,0.35);} }
-.idcard-texture{ position:absolute; inset:0; background:repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 2px, transparent 2px, transparent 7px); pointer-events:none; }
-.idcard-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-.idcard-brand{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--brass-soft); white-space:nowrap; }
-.idcard-chip{ width:30px; height:23px; border-radius:5px; background:linear-gradient(135deg,var(--brass-soft),var(--brass)); position:relative; margin-top:12px; flex-shrink:0; }
-.idcard-chip::before, .idcard-chip::after{ content:""; position:absolute; left:5px; right:5px; height:1px; background:rgba(23,28,38,0.35); }
-.idcard-chip::before{ top:7px; } .idcard-chip::after{ top:14px; }
-.idcard-name{ font-family:'IBM Plex Serif',serif; font-size:clamp(15px,4.6vw,19px); font-weight:600; margin-top:clamp(8px,3vw,14px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-.idcard-meta{ font-family:'IBM Plex Mono',monospace; font-size:clamp(9.5px,2.6vw,11px); color:#B7BECC; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-.idcard-nfc{ position:absolute; bottom:12px; right:14px; display:flex; align-items:center; justify-content:center; }
-.idcard-nfc-icon{ color:var(--brass-soft); opacity:.85; }
-.idcard-tap-hint{ position:absolute; bottom:14px; left:16px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#8891A2; letter-spacing:.05em; white-space:nowrap; }
-.ripple-ring{ position:absolute; border-radius:50%; border:2px solid var(--brass-soft); opacity:0; }
+@keyframes idcard-glow{ 0%{box-shadow:0 12px 30px rgba(23,28,38,0.22);} 45%{box-shadow:0 0 0 3px var(--brass-soft), 0 0 40px 6px rgba(184,146,60,0.5);} 100%{box-shadow:0 12px 30px rgba(23,28,38,0.22);} }
+.idcard-head{ height:31%; background:linear-gradient(115deg,#233D30 0%,#35513F 72%,#446A54 100%); color:#fff; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px); display:flex; align-items:flex-start; justify-content:space-between; gap:10px; position:relative; overflow:hidden; }
+.idcard-head::after{ content:""; position:absolute; width:150px; height:150px; border:1px solid rgba(255,255,255,.12); border-radius:50%; right:-66px; top:-88px; box-shadow:0 0 0 22px rgba(255,255,255,.025),0 0 0 44px rgba(255,255,255,.02); }
+.idcard-institution-row{ display:flex; align-items:center; gap:8px; min-width:0; position:relative; z-index:1; }
+.idcard-logo{ width:30px; height:30px; border-radius:50%; border:1px solid rgba(255,255,255,.55); color:#F3D998; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Serif',serif; font-size:10px; font-weight:700; letter-spacing:.06em; flex-shrink:0; }
+.idcard-institution{ font-family:'IBM Plex Serif',serif; font-weight:600; font-size:clamp(10.5px,3vw,13px); line-height:1.05; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.idcard-campus{ font-family:'IBM Plex Mono',monospace; font-size:clamp(7.5px,2vw,9px); letter-spacing:.12em; text-transform:uppercase; color:#D7E1D8; margin-top:3px; }
+.idcard-student-chip{ position:relative; z-index:1; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:.14em; padding:4px 7px; border:1px solid rgba(255,255,255,.35); border-radius:999px; white-space:nowrap; color:#F6E6BA; }
+.idcard-body{ height:69%; padding:clamp(10px,3vw,14px) clamp(12px,3.6vw,17px) clamp(9px,2.8vw,13px); display:grid; grid-template-columns:clamp(62px,23%,84px) 1fr; grid-template-rows:1fr auto; column-gap:clamp(10px,3vw,14px); row-gap:6px; position:relative; }
+.idcard-photo{ grid-row:1 / span 2; width:100%; aspect-ratio:3/4; border-radius:8px; overflow:hidden; background:#E2E5DD; border:1px solid #C8CEC2; display:flex; align-items:center; justify-content:center; color:#7B8378; align-self:start; }
+.idcard-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+.idcard-photo svg{ opacity:.58; }
+.idcard-details{ min-width:0; align-self:start; padding-top:1px; }
+.idcard-name{ font-family:'IBM Plex Serif',serif; font-size:clamp(14px,4.3vw,18px); line-height:1.05; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#182019; }
+.idcard-programme{ font-size:clamp(9.5px,2.5vw,11px); color:#35513F; font-weight:600; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.idcard-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-top:7px; }
+.idcard-field-label{ font-family:'IBM Plex Mono',monospace; font-size:clamp(6.5px,1.8vw,7.5px); letter-spacing:.09em; text-transform:uppercase; color:#8B9288; }
+.idcard-field-value{ font-family:'IBM Plex Mono',monospace; font-size:clamp(8px,2.2vw,9.5px); color:#273029; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:1px; }
+.idcard-bottom{ min-width:0; display:flex; align-items:flex-end; gap:8px; }
+.idcard-barcode-wrap{ min-width:0; flex:1; color:#151A16; }
+.idcard-barcode{ width:100%; height:clamp(21px,6vw,28px); display:block; }
+.idcard-barcode-text{ font-family:'IBM Plex Mono',monospace; font-size:clamp(6.5px,1.9vw,8px); letter-spacing:.18em; text-align:center; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.idcard-nfc-mark{ width:27px; height:27px; border-radius:50%; border:1px solid #CAD0C5; color:#35513F; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom:4px; }
+.idcard-tap-hint{ position:absolute; right:12px; bottom:5px; font-family:'IBM Plex Mono',monospace; font-size:6.5px; letter-spacing:.08em; color:#A0A69D; text-transform:uppercase; }
 
 /* ---- scan overlay ---- */
 .scan-overlay{ position:fixed; inset:0; max-width:460px; margin:0 auto; background:rgba(23,28,38,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; color:var(--white); animation:fadein .15s ease; }
@@ -262,21 +342,40 @@ function EmptyState({ text }) {
 /* ---------------------------------------------------------------------- */
 
 function VirtualIDCard({ onScan, isScanning, profile }) {
+  const barcodeValue = profile?.studentId || profile?.name || "STUDENT";
   return (
     <div className="idcard-wrap">
       <div className={"idcard" + (isScanning ? " scanning" : "")} onClick={onScan}>
-        <div className="idcard-texture" />
-        <div className="idcard-top">
-          <div>
-            <div className="idcard-brand">Academic OS</div>
-            <div className="idcard-chip" />
+        <div className="idcard-head">
+          <div className="idcard-institution-row">
+            <div className="idcard-logo">CVV</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="idcard-institution">{profile?.institution || "University / College"}</div>
+              <div className="idcard-campus">{profile?.campus || "Campus"}</div>
+            </div>
           </div>
-          <Radio size={18} className="idcard-nfc-icon" />
+          <div className="idcard-student-chip">STUDENT</div>
         </div>
-        <div className="idcard-name">{profile?.name || "Student"}</div>
-        <div className="idcard-meta">{(profile?.department || "").toUpperCase()} · {profile?.year || ""} · ID {profile?.studentId || ""}</div>
-        <div className="idcard-tap-hint">TAP CARD TO SCAN</div>
-        <div className="idcard-nfc"><Radio size={0} /></div>
+        <div className="idcard-body">
+          <div className="idcard-photo">
+            {profile?.photoDataUrl ? <img src={profile.photoDataUrl} alt={`${profile?.name || "Student"} ID`} /> : <User size={30} />}
+          </div>
+          <div className="idcard-details">
+            <div className="idcard-name">{profile?.name || "Student Name"}</div>
+            <div className="idcard-programme">{profile?.programme || profile?.department || "Programme"}</div>
+            <div className="idcard-info-grid">
+              <div><div className="idcard-field-label">Student ID</div><div className="idcard-field-value">{profile?.studentId || "Add ID"}</div></div>
+              <div><div className="idcard-field-label">Semester / Year</div><div className="idcard-field-value">{profile?.year || "—"}</div></div>
+              <div><div className="idcard-field-label">Department</div><div className="idcard-field-value">{profile?.department || "—"}</div></div>
+              <div><div className="idcard-field-label">Valid thru</div><div className="idcard-field-value">{profile?.validThru || "—"}</div></div>
+            </div>
+          </div>
+          <div className="idcard-bottom">
+            <Code39Barcode value={barcodeValue} />
+            <div className="idcard-nfc-mark" aria-label="NFC enabled"><Radio size={15} /></div>
+          </div>
+          <div className="idcard-tap-hint">NFC enabled</div>
+        </div>
       </div>
     </div>
   );
@@ -690,9 +789,14 @@ function NfcManageScreen({ state, actions }) {
   const [editContextId, setEditContextId] = useState("");
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [pName, setPName] = useState(state.profile.name);
+  const [pInstitution, setPInstitution] = useState(state.profile.institution || SEED_PROFILE.institution);
+  const [pCampus, setPCampus] = useState(state.profile.campus || SEED_PROFILE.campus);
+  const [pProgramme, setPProgramme] = useState(state.profile.programme || SEED_PROFILE.programme);
   const [pDept, setPDept] = useState(state.profile.department);
   const [pYear, setPYear] = useState(state.profile.year);
   const [pId, setPId] = useState(state.profile.studentId);
+  const [pValidThru, setPValidThru] = useState(state.profile.validThru || "");
+  const [pPhoto, setPPhoto] = useState(state.profile.photoDataUrl || "");
   const [copiedId, setCopiedId] = useState(null);
 
   const ALL_CONTEXTS = [
@@ -750,7 +854,7 @@ function NfcManageScreen({ state, actions }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{state.profile.name}</div>
             <div className="aos-mono" style={{ fontSize: 11, color: "#8B92A0", marginTop: 2 }}>
-              {state.profile.department} · {state.profile.year} · ID {state.profile.studentId}
+              {state.profile.programme || state.profile.department} · {state.profile.year} · ID {state.profile.studentId || "Not set"}
             </div>
           </div>
           <button className="aos-btn aos-btn-ghost" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => setShowProfileEdit(!showProfileEdit)}>
@@ -759,12 +863,31 @@ function NfcManageScreen({ state, actions }) {
         </div>
         {showProfileEdit && (
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 2 }}>
+              <div style={{ width: 58, height: 72, borderRadius: 8, overflow: "hidden", background: "var(--paper)", border: "1px solid var(--paper-deep)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {pPhoto ? <img src={pPhoto} alt="ID preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <User size={22} color="#8B92A0" />}
+              </div>
+              <label className="aos-btn aos-btn-ghost" style={{ flex: 1, cursor: "pointer" }}>
+                <Camera size={13} />{pPhoto ? "Change ID photo" : "Add ID photo"}
+                <input type="file" accept="image/*" hidden onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try { setPPhoto(await resizeProfilePhoto(file)); } catch { /* keep current image */ }
+                  e.target.value = "";
+                }} />
+              </label>
+              {pPhoto && <button className="aos-btn aos-btn-ghost" style={{ padding: "8px" }} onClick={() => setPPhoto("")}><Trash2 size={13} /></button>}
+            </div>
             <input className="aos-input" placeholder="Full name" value={pName} onChange={(e) => setPName(e.target.value)} />
+            <input className="aos-input" placeholder="Institution / College" value={pInstitution} onChange={(e) => setPInstitution(e.target.value)} />
+            <input className="aos-input" placeholder="Campus" value={pCampus} onChange={(e) => setPCampus(e.target.value)} />
+            <input className="aos-input" placeholder="Programme" value={pProgramme} onChange={(e) => setPProgramme(e.target.value)} />
             <input className="aos-input" placeholder="Department" value={pDept} onChange={(e) => setPDept(e.target.value)} />
-            <input className="aos-input" placeholder="Year (e.g. Year 3)" value={pYear} onChange={(e) => setPYear(e.target.value)} />
-            <input className="aos-input" placeholder="Student ID" value={pId} onChange={(e) => setPId(e.target.value)} />
+            <input className="aos-input" placeholder="Semester / Year" value={pYear} onChange={(e) => setPYear(e.target.value)} />
+            <input className="aos-input" placeholder="Student ID / Register no." value={pId} onChange={(e) => setPId(e.target.value)} />
+            <input className="aos-input" placeholder="Valid thru (optional)" value={pValidThru} onChange={(e) => setPValidThru(e.target.value)} />
             <button className="aos-btn aos-btn-primary" style={{ width: "100%" }} onClick={() => {
-              actions.updateProfile({ name: pName, department: pDept, year: pYear, studentId: pId });
+              actions.updateProfile({ name: pName, institution: pInstitution, campus: pCampus, programme: pProgramme, department: pDept, year: pYear, studentId: pId, validThru: pValidThru, photoDataUrl: pPhoto });
               setShowProfileEdit(false);
             }}><Check size={13} />Save profile</button>
           </div>
@@ -1110,7 +1233,7 @@ export default function AcademicOS() {
   const _ls = loadState() || {};
   const _launch = getLaunchParams();
 
-  const [profile, setProfile] = useState(_ls.profile || SEED_PROFILE);
+  const [profile, setProfile] = useState({ ...SEED_PROFILE, ...(_ls.profile || {}) });
   const [screen, setScreen] = useState("home");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [scannerSubjectId, setScannerSubjectId] = useState(null);
@@ -1131,10 +1254,34 @@ export default function AcademicOS() {
   const [authSplash, setAuthSplash] = useState(null); // { contextLabel }
   const [idCardOverlay, setIdCardOverlay] = useState(null);
   const nfcReaderRef = useRef(null);
+  const nfcReaderActiveRef = useRef(false);
+  const nfcReaderStartingRef = useRef(false);
+  const pendingNfcCallbackRef = useRef(null);
   const nfcTagsRef = useRef(nfcTags);
 
   // Keep ref in sync so async NFC callbacks always see fresh tags
   useEffect(() => { nfcTagsRef.current = nfcTags; }, [nfcTags]);
+
+  // Arm NFC as soon as the app opens. Web NFC itself can only start after a permitted
+  // user interaction and only scans while the page is visible, so we retry on the first
+  // interaction and whenever the app returns to the foreground.
+  useEffect(() => {
+    if (!NFC_SUPPORTED) return;
+    let disposed = false;
+    const tryStart = () => { if (!disposed) startBackgroundNfcListening(true); };
+    tryStart();
+    const onInteraction = () => tryStart();
+    const onVisibility = () => { if (document.visibilityState === "visible") tryStart(); };
+    window.addEventListener("pointerdown", onInteraction, { passive: true });
+    window.addEventListener("keydown", onInteraction);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      disposed = true;
+      window.removeEventListener("pointerdown", onInteraction);
+      window.removeEventListener("keydown", onInteraction);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   // Persist to localStorage whenever important state changes
   useEffect(() => {
@@ -1191,31 +1338,67 @@ export default function AcademicOS() {
     else showToast("Tag read — not yet registered. Add it in Profile.");
   }
 
-  async function startNfcScan(onCode) {
-    if (!NFC_SUPPORTED) { setNfcError("Web NFC isn't supported here. Use Chrome on Android over HTTPS."); return; }
+  function setNfcStartError(e, silent) {
+    if (silent) return;
+    if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in site settings and retry.");
+    else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off.");
+    else if (e.name === "SecurityError") setNfcError("NFC requires HTTPS.");
+    else setNfcError("Couldn't start NFC scan: " + e.message);
+  }
+
+  async function startBackgroundNfcListening(silent = false) {
+    if (!NFC_SUPPORTED) {
+      if (!silent) setNfcError("Web NFC isn't supported here. Use Chrome on Android over HTTPS.");
+      return false;
+    }
+    if (nfcReaderActiveRef.current) return true;
+    if (nfcReaderStartingRef.current) return false;
+    nfcReaderStartingRef.current = true;
     try {
-      setNfcError(null);
-      setNfcListening(true);
       const reader = new window.NDEFReader();
-      nfcReaderRef.current = reader;
       await reader.scan();
+      nfcReaderRef.current = reader;
+      nfcReaderActiveRef.current = true;
+      nfcReaderStartingRef.current = false;
+      setNfcError(null);
       reader.onreading = (event) => {
-        setNfcListening(false);
         const code = extractTagCode(event);
-        if (onCode) onCode(code, event.serialNumber);
-        else handleScannedCode(code, event.serialNumber);
+        const serial = event.serialNumber;
+        const callback = pendingNfcCallbackRef.current;
+        if (callback) {
+          pendingNfcCallbackRef.current = null;
+          setNfcListening(false);
+          callback(code, serial);
+        } else {
+          setNfcListening(false);
+          handleScannedCode(code, serial);
+        }
       };
       reader.onreadingerror = () => {
-        setNfcListening(false);
-        setNfcError("Couldn't read that tag — hold the phone steady against it and try again.");
+        if (pendingNfcCallbackRef.current) {
+          pendingNfcCallbackRef.current = null;
+          setNfcListening(false);
+          setNfcError("Couldn't read that tag — hold the phone steady against it and try again.");
+        }
       };
+      return true;
     } catch (e) {
+      nfcReaderRef.current = null;
+      nfcReaderActiveRef.current = false;
+      nfcReaderStartingRef.current = false;
       setNfcListening(false);
-      if (e.name === "NotAllowedError") setNfcError("NFC permission was denied. Allow it in site settings and retry.");
-      else if (e.name === "NotSupportedError") setNfcError("This device has no NFC hardware, or NFC is turned off.");
-      else if (e.name === "SecurityError") setNfcError("NFC requires HTTPS.");
-      else setNfcError("Couldn't start NFC scan: " + e.message);
+      setNfcStartError(e, silent);
+      return false;
     }
+  }
+
+  async function startNfcScan(onCode) {
+    pendingNfcCallbackRef.current = onCode || null;
+    setNfcError(null);
+    setNfcListening(true);
+    const ready = await startBackgroundNfcListening(false);
+    if (!ready) pendingNfcCallbackRef.current = null;
+    return ready;
   }
 
   // Called by real NFC reads — dashboard tags show the recognised ID card before routing.
@@ -1237,38 +1420,17 @@ export default function AcademicOS() {
       return;
     }
     setScanning(tag);
-    try {
-      setNfcError(null);
-      setNfcListening(true);
-      const reader = new window.NDEFReader();
-      nfcReaderRef.current = reader;
-      await reader.scan();
-      reader.onreading = (event) => {
-        setNfcListening(false);
-        const code = extractTagCode(event);
-        const serial = event.serialNumber;
-        const tags = nfcTagsRef.current;
-        const scannedTag = tags.find((t) =>
-          (code && t.tag_code && t.tag_code === code) ||
-          (serial && t.serial && t.serial === serial)
-        );
-        setScanning(null);
-        if (scannedTag) tapTag(scannedTag);
-        else showToast("Tag read — not yet registered. Add it in Profile.");
-      };
-      reader.onreadingerror = () => {
-        setNfcListening(false);
-        setScanning(null);
-        setNfcError("Couldn't read tag.");
-      };
-    } catch (e) {
-      setNfcListening(false);
+    const ready = await startNfcScan((code, serial) => {
+      const tags = nfcTagsRef.current;
+      const scannedTag = tags.find((t) =>
+        (code && t.tag_code && t.tag_code === code) ||
+        (serial && t.serial && t.serial === serial)
+      );
       setScanning(null);
-      if (e.name === "NotAllowedError") setNfcError("NFC permission denied.");
-      else if (e.name === "NotSupportedError") setNfcError("NFC not available on this device.");
-      else if (e.name === "SecurityError") setNfcError("NFC requires HTTPS.");
-      else setNfcError("NFC error: " + e.message);
-    }
+      if (scannedTag) tapTag(scannedTag);
+      else showToast("Tag read — not yet registered. Add it in Profile.");
+    });
+    if (!ready) setScanning(null);
   }
 
   const actions = {
@@ -1338,7 +1500,7 @@ export default function AcademicOS() {
           onCancel={() => {
             setScanning(null);
             setNfcListening(false);
-            try { nfcReaderRef.current?.abort?.(); } catch {}
+            pendingNfcCallbackRef.current = null;
           }}
         />
       )}
